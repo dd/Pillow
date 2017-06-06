@@ -64,6 +64,7 @@
  * 2004-10-04 fl   Added modefilter
  * 2005-10-02 fl   Added access proxy
  * 2006-06-18 fl   Always draw last point in polyline
+ * 2017-05-19 fl   Added kerning in pixels
  *
  * Copyright (c) 1997-2006 by Secret Labs AB
  * Copyright (c) 1995-2006 by Fredrik Lundh
@@ -2148,12 +2149,13 @@ _font_dealloc(ImagingFontObject* self)
 }
 
 static inline int
-textwidth(ImagingFontObject* self, const unsigned char* text)
-{
-    int xsize;
+textwidth(ImagingFontObject* self, const unsigned char* text, const int kerning) {
+    int xsize = 0;
 
-    for (xsize = 0; *text; text++)
-        xsize += self->glyphs[*text].dx;
+    for (; *text; text++) {
+        xsize += self->glyphs[*text].dx + kerning;
+    }
+    xsize -= kerning;
 
     return xsize;
 }
@@ -2197,8 +2199,9 @@ _font_getmask(ImagingFontObject* self, PyObject* args)
 
     unsigned char* text;
     char* mode = "";
+    int kerning = 0;
 
-    if (!PyArg_ParseTuple(args, "O|s:getmask",  &encoded_string, &mode)){
+    if (!PyArg_ParseTuple(args, "O|si:getmask",  &encoded_string, &mode, &kerning)) {
         return NULL;
     }
 
@@ -2207,7 +2210,7 @@ _font_getmask(ImagingFontObject* self, PyObject* args)
         return NULL;
     }
 
-    im = ImagingNew(self->bitmap->mode, textwidth(self, text), self->ysize);
+    im = ImagingNew(self->bitmap->mode, textwidth(self, text, kerning), self->ysize);
     if (!im) {
         return NULL;
     }
@@ -2231,7 +2234,7 @@ _font_getmask(ImagingFontObject* self, PyObject* args)
         ImagingDelete(bitmap);
         if (status < 0)
             goto failed;
-        x = x + glyph->dx;
+        x = x + glyph->dx + (i != 0 ? kerning : 0);
         b = b + glyph->dy;
     }
     return PyImagingNew(im);
@@ -2246,16 +2249,18 @@ _font_getsize(ImagingFontObject* self, PyObject* args)
 {
     unsigned char* text;
     PyObject* encoded_string;
+    int kerning = 0;
 
-    if (!PyArg_ParseTuple(args, "O:getsize", &encoded_string))
+    if (!PyArg_ParseTuple(args, "O|i:getsize", &encoded_string, &kerning)) {
         return NULL;
+    }
 
     _font_text_asBytes(encoded_string, &text);
     if (!text) {
         return NULL;
     }
 
-    return Py_BuildValue("ii", textwidth(self, text), self->ysize);
+    return Py_BuildValue("ii", textwidth(self, text, kerning), self->ysize);
 }
 
 static struct PyMethodDef _font_methods[] = {

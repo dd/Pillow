@@ -14,6 +14,7 @@
  * 2006-06-18 fl  Fixed glyph bearing calculation
  * 2007-12-23 fl  Fixed crash in family/style attribute fetch
  * 2008-01-02 fl  Handle Unicode filenames properly
+ * 2017-05-19 fl  Added kerning in pixels
  *
  * Copyright (c) 1998-2007 by Secret Labs AB
  */
@@ -201,8 +202,10 @@ font_getsize(FontObject* self, PyObject* args)
     /* calculate size and bearing for a given string */
 
     PyObject* string;
-    if (!PyArg_ParseTuple(args, "O:getsize", &string))
+    int extra_kerning = 0;
+    if (!PyArg_ParseTuple(args, "O|i:getsize", &string, &extra_kerning)) {
         return NULL;
+    }
 
 #if PY_VERSION_HEX >= 0x03000000
     if (!PyUnicode_Check(string)) {
@@ -273,11 +276,13 @@ font_getsize(FontObject* self, PyObject* args)
         yoffset = PIXEL(self->face->size->metrics.ascender - yoffset);
     }
 
+    x = PIXEL(x) + (i-1)*extra_kerning;
+
     return Py_BuildValue(
         "(ii)(ii)",
-        PIXEL(x), PIXEL(y_max - y_min),
+        x, PIXEL(y_max - y_min),
         PIXEL(xoffset), yoffset
-        );
+    );
 }
 
 static PyObject*
@@ -339,10 +344,12 @@ font_render(FontObject* self, PyObject* args)
     PyObject* string;
     Py_ssize_t id;
     int mask = 0;
+    int extra_kerning = 0;
     int temp;
     int xx, x0, x1;
-    if (!PyArg_ParseTuple(args, "On|i:render", &string, &id, &mask))
+    if (!PyArg_ParseTuple(args, "On|ii:render", &string, &id, &mask, &extra_kerning)) {
         return NULL;
+    }
 
 #if PY_VERSION_HEX >= 0x03000000
     if (!PyUnicode_Check(string)) {
@@ -380,6 +387,9 @@ font_render(FontObject* self, PyObject* args)
             FT_Get_Kerning(self->face, last_index, index, ft_kerning_default,
                            &delta);
             x += delta.x >> 6;
+        }
+        if (i != 0) {
+            x += extra_kerning;
         }
 
         error = FT_Load_Glyph(self->face, index, load_flags);

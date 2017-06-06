@@ -23,6 +23,7 @@
 # 2004-09-04 fl   Added width support to line primitive
 # 2004-09-10 fl   Added font mode handling
 # 2006-06-19 fl   Added font bearing support (getmask2)
+# 2017-05-19 fl   Added kerning in pixels
 #
 # Copyright (c) 1997-2006 by Secret Labs AB
 # Copyright (c) 1996-2006 by Fredrik Lundh
@@ -202,10 +203,10 @@ class ImageDraw(object):
 
         return text.split(split_character)
 
-    def text(self, xy, text, fill=None, font=None, anchor=None,
+    def text(self, xy, text, fill=None, font=None, anchor=None, kerning=0,
              *args, **kwargs):
         if self._multiline_check(text):
-            return self.multiline_text(xy, text, fill, font, anchor,
+            return self.multiline_text(xy, text, fill, font, anchor, kerning,
                                        *args, **kwargs)
 
         ink, fill = self._getink(fill)
@@ -215,23 +216,24 @@ class ImageDraw(object):
             ink = fill
         if ink is not None:
             try:
-                mask, offset = font.getmask2(text, self.fontmode)
+                mask, offset = font.getmask2(text, self.fontmode,
+                                             kerning=kerning)
                 xy = xy[0] + offset[0], xy[1] + offset[1]
             except AttributeError:
                 try:
-                    mask = font.getmask(text, self.fontmode)
+                    mask = font.getmask(text, self.fontmode, kerning)
                 except TypeError:
-                    mask = font.getmask(text)
+                    mask = font.getmask(text, kerning)
             self.draw.draw_bitmap(xy, mask, ink)
 
     def multiline_text(self, xy, text, fill=None, font=None, anchor=None,
-                       spacing=4, align="left"):
+                       spacing=4, align="left", kerning=0):
         widths = []
         max_width = 0
         lines = self._multiline_split(text)
         line_spacing = self.textsize('A', font=font)[1] + spacing
         for line in lines:
-            line_width, line_height = self.textsize(line, font)
+            line_width, line_height = self.textsize(line, font, kerning)
             widths.append(line_width)
             max_width = max(max_width, line_width)
         left, top = xy
@@ -244,25 +246,25 @@ class ImageDraw(object):
                 left += (max_width - widths[idx])
             else:
                 assert False, 'align must be "left", "center" or "right"'
-            self.text((left, top), line, fill, font, anchor)
+            self.text((left, top), line, fill, font, anchor, kerning)
             top += line_spacing
             left = xy[0]
 
-    def textsize(self, text, font=None, *args, **kwargs):
+    def textsize(self, text, font=None, kerning=0, *args, **kwargs):
         """Get the size of a given string, in pixels."""
         if self._multiline_check(text):
-            return self.multiline_textsize(text, font, *args, **kwargs)
+            return self.multiline_textsize(text, font, kerning, *args, **kwargs)
 
         if font is None:
             font = self.getfont()
-        return font.getsize(text)
+        return font.getsize(text, kerning)
 
-    def multiline_textsize(self, text, font=None, spacing=4):
+    def multiline_textsize(self, text, font=None, spacing=4, kerning=0):
         max_width = 0
         lines = self._multiline_split(text)
         line_spacing = self.textsize('A', font=font)[1] + spacing
         for line in lines:
-            line_width, line_height = self.textsize(line, font)
+            line_width, line_height = self.textsize(line, font, kerning)
             max_width = max(max_width, line_width)
         return max_width, len(lines)*line_spacing
 

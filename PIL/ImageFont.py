@@ -15,6 +15,7 @@
 # 2002-12-04 fl   skip non-directory entries in the system path
 # 2003-04-29 fl   add embedded default font
 # 2003-09-27 fl   added support for truetype charmap encodings
+# 2017-05-19 fl   added kerning in pixels
 #
 # Todo:
 # Adapt to PILFONT2 format (16-bit fonts, compressed, single file)
@@ -136,20 +137,20 @@ class FreeTypeFont(object):
     def getmetrics(self):
         return self.font.ascent, self.font.descent
 
-    def getsize(self, text):
-        size, offset = self.font.getsize(text)
+    def getsize(self, text, kerning=0):
+        size, offset = self.font.getsize(text, kerning)
         return (size[0] + offset[0], size[1] + offset[1])
 
-    def getoffset(self, text):
-        return self.font.getsize(text)[1]
+    def getoffset(self, text, kerning=0):
+        return self.font.getsize(text, kerning)[1]
 
     def getmask(self, text, mode=""):
         return self.getmask2(text, mode)[0]
 
-    def getmask2(self, text, mode="", fill=Image.core.fill):
-        size, offset = self.font.getsize(text)
+    def getmask2(self, text, mode="", fill=Image.core.fill, kerning=0):
+        size, offset = self.font.getsize(text, kerning)
         im = fill("L", size, 0)
-        self.font.render(text, im.id, mode == "1")
+        self.font.render(text, im.id, mode == "1", kerning)
         return im, offset
 
     def font_variant(self, font=None, size=None, index=None, encoding=None):
@@ -185,8 +186,8 @@ class TransposedFont(object):
         self.font = font
         self.orientation = orientation  # any 'transpose' argument, or None
 
-    def getsize(self, text):
-        w, h = self.font.getsize(text)
+    def getsize(self, text, kerning=0):
+        w, h = self.font.getsize(text, kerning)
         if self.orientation in (Image.ROTATE_90, Image.ROTATE_270):
             return h, w
         return w, h
