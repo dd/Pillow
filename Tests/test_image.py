@@ -2,10 +2,28 @@ from helper import unittest, PillowTestCase, hopper
 
 from PIL import Image
 import os
-import sys
 
 
 class TestImage(PillowTestCase):
+
+    def test_image_modes_success(self):
+        for mode in [
+            '1', 'P', 'PA',
+            'L', 'LA', 'La',
+            'F', 'I', 'I;16', 'I;16L', 'I;16B', 'I;16N',
+            'RGB', 'RGBX', 'RGBA', 'RGBa',
+            'CMYK', 'YCbCr', 'LAB', 'HSV',
+        ]:
+            Image.new(mode, (1, 1))
+
+    def test_image_modes_fail(self):
+        for mode in [
+            '', 'bad', 'very very long',
+            'BGR;15', 'BGR;16', 'BGR;24', 'BGR;32'
+        ]:
+            with self.assertRaises(ValueError) as e:
+                Image.new(mode, (1, 1));
+            self.assertEqual(str(e.exception), 'unrecognized image mode')
 
     def test_sanity(self):
 
@@ -28,10 +46,9 @@ class TestImage(PillowTestCase):
         self.assertEqual(im2.getcolors(), [(10000, 0)])
         self.assertEqual(im3.getcolors(), [(10000, 0)])
 
-        self.assertRaises(ValueError, lambda: Image.new("X", (100, 100)))
-        self.assertRaises(ValueError, lambda: Image.new("", (100, 100)))
-        # self.assertRaises(
-        #     MemoryError, lambda: Image.new("L", (1000000, 1000000)))
+        self.assertRaises(ValueError, Image.new, "X", (100, 100))
+        self.assertRaises(ValueError, Image.new, "", (100, 100))
+        # self.assertRaises(MemoryError, Image.new, "L", (1000000, 1000000))
 
     def test_width_height(self):
         im = Image.new("RGB", (1, 2))
@@ -49,12 +66,14 @@ class TestImage(PillowTestCase):
         else:
             import io
             im = io.BytesIO(b'')
-        self.assertRaises(IOError, lambda: Image.open(im))
+        self.assertRaises(IOError, Image.open, im)
 
-    @unittest.skipIf(sys.version_info < (3, 4),
-                     "pathlib only available in Python 3.4 or later")
+    def test_bad_mode(self):
+        self.assertRaises(ValueError, Image.open, "filename", "bad mode")
+
+    @unittest.skipUnless(Image.HAS_PATHLIB, "requires pathlib/pathlib2")
     def test_pathlib(self):
-        from pathlib import Path
+        from PIL.Image import Path
         im = Image.open(Path("Tests/images/hopper.jpg"))
         self.assertEqual(im.mode, "RGB")
         self.assertEqual(im.size, (128, 128))
@@ -90,7 +109,7 @@ class TestImage(PillowTestCase):
     def test_unknown_extension(self):
         im = hopper()
         temp_file = self.tempfile("temp.unknown")
-        self.assertRaises(ValueError, lambda: im.save(temp_file))
+        self.assertRaises(ValueError, im.save, temp_file)
 
     def test_internals(self):
 
@@ -145,14 +164,28 @@ class TestImage(PillowTestCase):
         self.assertEqual(im.size[1], orig_size[1] + 2*ymargin)
 
     def test_getbands(self):
-        # Arrange
+        # Assert
+        self.assertEqual(hopper('RGB').getbands(), ('R', 'G', 'B'))
+        self.assertEqual(hopper('YCbCr').getbands(), ('Y', 'Cb', 'Cr'))
+
+    def test_getchannel_wrong_params(self):
         im = hopper()
 
-        # Act
-        bands = im.getbands()
+        self.assertRaises(ValueError, im.getchannel, -1)
+        self.assertRaises(ValueError, im.getchannel, 3)
+        self.assertRaises(ValueError, im.getchannel, 'Z')
+        self.assertRaises(ValueError, im.getchannel, '1')
 
-        # Assert
-        self.assertEqual(bands, ('R', 'G', 'B'))
+    def test_getchannel(self):
+        im = hopper('YCbCr')
+        Y, Cb, Cr = im.split()
+
+        self.assert_image_equal(Y, im.getchannel(0))
+        self.assert_image_equal(Y, im.getchannel('Y'))
+        self.assert_image_equal(Cb, im.getchannel(1))
+        self.assert_image_equal(Cb, im.getchannel('Cb'))
+        self.assert_image_equal(Cr, im.getchannel(2))
+        self.assert_image_equal(Cr, im.getchannel('Cr'))
 
     def test_getbbox(self):
         # Arrange
@@ -170,7 +203,7 @@ class TestImage(PillowTestCase):
         im2 = Image.new('RGB', (25, 25), 'white')
 
         # Act / Assert
-        self.assertTrue(im1 != im2)
+        self.assertNotEqual(im1, im2)
 
     def test_alpha_composite(self):
         # https://stackoverflow.com/questions/3374878
@@ -201,6 +234,58 @@ class TestImage(PillowTestCase):
         # Assert
         img_colors = sorted(img.getcolors())
         self.assertEqual(img_colors, expected_colors)
+
+    def test_alpha_inplace(self):
+        src = Image.new('RGBA', (128,128), 'blue')
+
+        over = Image.new('RGBA', (128,128), 'red')
+        mask = hopper('L')
+        over.putalpha(mask)
+
+        target = Image.alpha_composite(src, over)
+
+        # basic
+        full = src.copy()
+        full.alpha_composite(over)
+        self.assert_image_equal(full, target)
+
+        # with offset down to right
+        offset = src.copy()
+        offset.alpha_composite(over, (64, 64))
+        self.assert_image_equal(offset.crop((64, 64, 127, 127)),
+                                target.crop((0, 0, 63, 63)))
+        self.assertEqual(offset.size, (128, 128))
+
+        # offset and crop
+        box = src.copy()
+        box.alpha_composite(over, (64, 64), (0, 0, 32, 32))
+        self.assert_image_equal(box.crop((64, 64, 96, 96)),
+                                target.crop((0, 0, 32, 32)))
+        self.assert_image_equal(box.crop((96, 96, 128, 128)),
+                                src.crop((0, 0, 32, 32)))
+        self.assertEqual(box.size, (128, 128))
+
+        # source point
+        source = src.copy()
+        source.alpha_composite(over, (32, 32), (32, 32, 96, 96))
+
+        self.assert_image_equal(source.crop((32, 32, 96, 96)),
+                                target.crop((32, 32, 96, 96)))
+        self.assertEqual(source.size, (128, 128))
+
+        # errors
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, "invalid source")
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, (0, 0), "invalid destination")
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, (0))
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, (0, 0), (0))
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, (0, -1))
+        self.assertRaises(ValueError,
+            source.alpha_composite, over, (0, 0), (0, -1))
 
     def test_registered_extensions_uninitialized(self):
         # Arrange
@@ -256,7 +341,7 @@ class TestImage(PillowTestCase):
         # Act/Assert
         self.assertRaises(
             ValueError,
-            lambda: Image.effect_mandelbrot(size, extent, quality))
+            Image.effect_mandelbrot, size, extent, quality)
 
     def test_effect_noise(self):
         # Arrange
@@ -317,7 +402,7 @@ class TestImage(PillowTestCase):
         im = hopper()
 
         # Act / Assert
-        self.assertRaises(NotImplementedError, lambda: im.offset(None))
+        self.assertRaises(NotImplementedError, im.offset, None)
 
     def test_fromstring(self):
         self.assertRaises(NotImplementedError, Image.fromstring)
@@ -328,8 +413,7 @@ class TestImage(PillowTestCase):
 
         # Act / Assert
         self.assertRaises(ValueError,
-                          lambda: Image.linear_gradient(wrong_mode))
-        return
+                          Image.linear_gradient, wrong_mode)
 
     def test_linear_gradient(self):
 
@@ -354,8 +438,7 @@ class TestImage(PillowTestCase):
 
         # Act / Assert
         self.assertRaises(ValueError,
-                          lambda: Image.radial_gradient(wrong_mode))
-        return
+                          Image.radial_gradient, wrong_mode)
 
     def test_radial_gradient(self):
 
@@ -374,6 +457,38 @@ class TestImage(PillowTestCase):
             target = Image.open(target_file).convert(mode)
             self.assert_image_equal(im, target)
 
+    def test_remap_palette(self):
+        # Test illegal image mode
+        im = hopper()
+        self.assertRaises(ValueError, im.remap_palette, None)
+
+
+    def test__new(self):
+        from PIL import ImagePalette
+        
+        im = hopper('RGB')
+        im_p = hopper('P')
+
+        blank_p = Image.new('P', (10,10))
+        blank_pa = Image.new('PA', (10,10))
+        blank_p.palette = None
+        blank_pa.palette = None
+        
+        def _make_new(base_image, im, palette_result=None):
+            new_im = base_image._new(im)
+            self.assertEqual(new_im.mode, im.mode)
+            self.assertEqual(new_im.size, im.size)
+            self.assertEqual(new_im.info, base_image.info)
+            if palette_result is not None:
+                self.assertEqual(new_im.palette.tobytes(), palette_result.tobytes())
+            else:
+                self.assertEqual(new_im.palette, None)
+            
+        _make_new(im, im_p, im_p.palette)
+        _make_new(im_p, im, None)
+        _make_new(im, blank_p, ImagePalette.ImagePalette())
+        _make_new(im, blank_pa, ImagePalette.ImagePalette())
+        
 
 class MockEncoder(object):
     pass
@@ -390,7 +505,7 @@ class TestRegistry(PillowTestCase):
     def test_encode_registry(self):
 
         Image.register_encoder('MOCK', mock_encode)
-        self.assert_('MOCK' in Image.ENCODERS)
+        self.assertIn('MOCK', Image.ENCODERS)
 
         enc = Image._getencoder('RGB', 'MOCK', ('args',), extra=('extra',))
 
@@ -398,10 +513,10 @@ class TestRegistry(PillowTestCase):
         self.assertEqual(enc.args, ('RGB', 'args', 'extra'))
 
     def test_encode_registry_fail(self):
-        self.assertRaises(IOError, lambda: Image._getencoder('RGB',
-                                                             'DoesNotExist',
-                                                             ('args',),
-                                                             extra=('extra',)))
+        self.assertRaises(IOError, Image._getencoder, 'RGB',
+                                                      'DoesNotExist',
+                                                      ('args',),
+                                                      extra=('extra',))
 
 if __name__ == '__main__':
     unittest.main()

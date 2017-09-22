@@ -1,10 +1,286 @@
 Changelog (Pillow)
 ==================
 
-4.2.0 (unreleased)
+4.3.0 (unreleased)
 ------------------
 
-- Update FreeType to 2.8
+- Fixed support for building on Windows/msys2. Added Appveyor CI coverage for python3 on msys2 #2476
+  [wiredfool]
+
+- Fix ValueError in Exif/Tiff IFD #2719
+  [wiredfool]
+
+- Use pathlib2 for Path objects on Python < 3.4 #2291
+  [asergi]
+
+- Export only required properties in unsafe_ptrs #2740
+  [homm]
+
+- Alpha composite fixes #2709
+  [homm]
+  
+- Faster Transpose operations, added 'Transverse' option #2730
+  [homm]
+
+- Deprecate ImageOps undocumented functions gaussian_blur, gblur, unsharp_mask, usm and box_blur in favor of ImageFilter implementations #2735
+  [homm]
+  
+- Dependencies: Updated freetype to 2.8.1 #2741
+  [radarhere]
+
+- Bug: Player skipped first image #2742
+  [radarhere]
+
+- Faster filter operations for Kernel, Gaussian, and Unsharp Mask filters #2679
+  [homm]
+
+- EPS: Add showpage to force rendering of some EPS images #2636
+  [kaplun]
+
+- DOC: Fix type of palette parameter in Image.quantize. #2703
+  [kkopachev]
+
+- DOC: Fix Ico docs to match code #2712
+  [hugovk]
+
+- Added file pointer save to SpiderImagePlugin #2647
+  [radarhere]
+  
+- Add targa version 2 footer #2713
+  [jhultgre]
+
+- Removed redundant lines #2714
+  [radarhere]
+
+- Travis CI: Use default pypy/pypy3 #2721
+  [hugovk]
+
+- Fix for SystemError when rendering an empty string, added in 4.2.0 #2706
+  [wiredfool]
+  
+- Fix for memory leaks in font handling added in 4.2.0 #2634
+  [wiredfool]
+
+- Tests:  cleanup, more tests. Fixed WMF save handler #2689
+  [radarhere]
+
+- Removed debugging interface for Image.core.grabclipboard #2708
+  [radarhere]
+
+- Doc syntax fix #2710
+  [radarhere]
+
+- Faster packing and unpacking for RGB, LA, and related storage modes #2693
+  [homm]
+  
+- Use RGBX rawmode for RGB JPEG images where possible #1989 
+  [homm]
+
+- Remove palettes from non-palette modes in _new #2702
+  [wiredfool]
+
+- Delete transparency info when convert'ing RGB/L to RGBA #2633
+  [olt]
+
+- Code tweaks to ease type annotations #2687
+  [neiljp]
+
+- Fixed incorrect use of 's#' to byteslike object #2691
+  [wiredfool]
+
+- Fix JPEG subsampling labels for subsampling=2  #2698
+  [homm]
+
+- Region of interest (box) for resampling #2254
+  [homm]
+
+- Basic support for Termux (android) in setup.py #2684
+  [wiredfool]
+
+- Bug: Fix Image.fromarray for numpy.bool type. #2683
+  [wiredfool]
+
+- CI: Add Fedora 24 and 26 to Docker tests
+  [wiredfool]
+
+- JPEG: Fix ZeroDivisionError when EXIF contains invalid DPI (0/0). #2667
+  [vytisb]
+
+- Depends: Updated openjpeg to 2.2.0 #2669
+  [radarhere]
+
+- Depends: Updated Tk Tcl to 8.6.7 #2668
+  [radarhere]
+
+- Depends: Updated libimagequant to 2.10.2 #2660
+  [radarhere]
+
+- Test: Added test for ImImagePlugin tell() #2675
+  [radarhere]
+
+- Test: Additional tests for SGIImagePlugin #2659
+  [radarhere]
+
+- New Image.getchannel method #2661
+  [homm]
+
+- Remove unused im.copy2 and core.copy methods #2657
+  [homm]
+
+- Fast Image.merge() #2677
+  [homm]
+  
+- Fast Image.split() #2676
+  [homm]
+
+- Fast image allocation #2655
+  [homm]
+
+- Storage cleanup #2654
+  [homm]
+
+- FLI: Use frame count from FLI header #2674
+  [radarhere]
+
+- Test: Test animated FLI file #2650
+  [hugovk]
+
+- Bug: Fixed uninitialized memory in bc5 decoding #2648
+  [ifeherva]
+
+- Moved SgiImagePlugin save error to before the start of write operations #2646
+  [radarhere]
+
+- Move createfontdatachunk.py so isn't installed globally #2645
+  [hugovk]
+
+- Bug: Fix unexpected keyword argument 'align' #2641
+  [hugovk]
+
+- Add newlines to error message for clarity #2640
+  [hugovk]
+
+- Docs: Updated redirected URL #2637
+  [radarhere]
+
+- Bug: Fix JPEG DPI when EXIF is invalid #2632
+  [wiredfool]
+
+- Bug: Fix for font getsize on empty string #2624
+  [radarhere]
+
+- Docs: Improved ImageDraw documentation #2626
+  [radarhere]
+
+- Docs: Corrected alpha_composite args documentation #2627
+  [radarhere]
+
+- Docs: added the description of the filename attribute to images.rst #2621
+  [dasdachs]
+
+- Dependencies: Updated libimagequant to 2.10.1 #2616
+  [radarhere]
+
+- PDF: Renamed parameter to not shadow built-in dict #2612
+  [kijeong]
+
+4.2.1 (2017-07-06)
+------------------
+
+- CI: Fix version specification and test on CI for PyPy/Windows #2608
+  [wiredfool]
+
+4.2.0 (2017-07-01)
+------------------
+
+- Doc: Clarified Image.save:append_images documentation #2604
+  [radarhere]
+
+- CI: Amazon Linux and Centos6 docker images added to TravisCI #2585
+  [wiredfool]
+
+- Image.alpha_composite added #2595
+  [wiredfool]
+
+- Complex Text Support #2576
+  [ShamsaHamed, Fahad-Alsaidi, wiredfool]
+
+- Added threshold parameter to ImageDraw.floodfill #2599
+  [nediamond]
+
+- Added dBATCH parameter to ghostscript command #2588
+  [radarhere]
+
+- JPEG: Adjust buffer size when icc_profile > MAXBLOCK #2596
+  [Darou]
+
+- Specify Pillow Version in one place #2517
+  [wiredfool]
+
+- CI: Change the owner of the TRAVIS_BUILD_DIR, fixing broken docker runs #2587
+  [wiredfool]
+
+- Fix truncated PNG loading for some images, Fix memory leak on truncated PNG images. #2541, #2598
+  [homm]
+
+- Add decompression bomb check to Image.crop #2410
+  [wiredfool]
+
+- ImageFile: Ensure that the `err_code` variable is initialized in case of exception. #2363
+  [alexkiro]
+
+- Tiff: Support append_images for saving multipage TIFFs #2406
+  [blochl]
+
+- Doc: Clarify that draft is only implemented for JPEG and PCD #2409
+  [wiredfool]
+
+- Test: MicImagePlugin #2447
+  [hugovk]
+
+- Use round() instead of floor() to eliminate zero coefficients in resample #2558
+  [homm]
+
+- Remove deprecated code #2549
+  [hugovk]
+
+- Added append_images to PDF saving #2526
+  [radarhere]
+
+- Remove unused function core image function new_array #2548
+  [hugovk]
+
+- Remove unnecessary calls to dict.keys() #2551
+  [jdufresne]
+
+- Add more ImageDraw.py tests and remove unused Draw.c code #2533
+  [hugovk]
+
+- Test: More tests for ImageMorph #2554
+  [hugovk]
+
+- Test: McIDAS area file #2552
+  [radarhere]
+
+- Update Feature Detection #2520
+  [wiredfool]
+
+- CI: Update pypy on TravisCI #2573
+  [hugovk]
+
+- ImageMorph: Fix wrong expected size of MRLs read from disk #2561
+  [dov]
+
+- Docs: Update install docs for FreeBSD #2546
+  [wiredfool]
+
+- Build: Ignore OpenJpeg 1.5 on FreeBSD #2544
+  [melvyn-sopacua]
+
+- Remove 'not yet implemented' methods from PIL 1.1.4 #2538
+  [hugovk]
+
+- Dependencies: Update FreeType to 2.8, LibTIFF to 4.0.8 and libimagequant to 2.9.1 #2535 #2537 #2540
   [radarhere]
 
 - Raise TypeError and not also UnboundLocalError in ImageFile.Parser() #2525
@@ -18,7 +294,7 @@ Changelog (Pillow)
 
 - Remove WITH_DEBUG compilation flag #2522
   [wiredfool]
-  
+
 - Fix return value on parameter parse error in _webp.c #2521
   [adw1n]
 
@@ -30,12 +306,12 @@ Changelog (Pillow)
 
 - Doc: Release Process Changes #2516
   [wiredfool]
-  
+
 - CI: Added region for s3 deployment on appveyor #2515
   [wiredfool]
-  
+
 - Doc: Updated references to point to existing files #2507
-  [radarhere]  
+  [radarhere]
 
 - Return copy on Image crop if crop dimensions match the image #2471
   [radarhere]

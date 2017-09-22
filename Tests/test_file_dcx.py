@@ -23,7 +23,7 @@ class TestFileDcx(PillowTestCase):
     def test_invalid_file(self):
         with open("Tests/images/flower.jpg", "rb") as fp:
             self.assertRaises(SyntaxError,
-                              lambda: DcxImagePlugin.DcxImageFile(fp))
+                              DcxImagePlugin.DcxImageFile, fp)
 
     def test_tell(self):
         # Arrange
@@ -50,7 +50,7 @@ class TestFileDcx(PillowTestCase):
                 im.seek(n_frames)
                 break
             except EOFError:
-                self.assertTrue(im.tell() < n_frames)
+                self.assertLess(im.tell(), n_frames)
 
     def test_seek_too_far(self):
         # Arrange
@@ -58,7 +58,7 @@ class TestFileDcx(PillowTestCase):
         frame = 999  # too big on purpose
 
         # Act / Assert
-        self.assertRaises(EOFError, lambda: im.seek(frame))
+        self.assertRaises(EOFError, im.seek, frame)
 
 
 if __name__ == '__main__':

@@ -5,7 +5,8 @@
    Rotating in chunks that fit in the cache can speed up rotation
    8x on a modern CPU. A chunk size of 128 requires only 65k and is large enough
    that the overhead from the extra loops are not apparent. */
-#define ROTATE_CHUNK 128
+#define ROTATE_CHUNK 512
+#define ROTATE_SMALL_CHUNK 8
 
 #define COORD(v) ((v) < 0.0 ? -1 : ((int)(v)))
 #define FLOOR(v) ((v) < 0.0 ? ((int)floor(v)) : ((int)(v)))
@@ -24,25 +25,28 @@ ImagingFlipLeftRight(Imaging imOut, Imaging imIn)
     if (imIn->xsize != imOut->xsize || imIn->ysize != imOut->ysize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
-#define FLIP_HORIZ(image)\
-    for (y = 0; y < imIn->ysize; y++) {\
-        xr = imIn->xsize-1;\
-        for (x = 0; x < imIn->xsize; x++, xr--)\
-            imOut->image[y][x] = imIn->image[y][xr];\
+#define FLIP_LEFT_RIGHT(INT, image) \
+    for (y = 0; y < imIn->ysize; y++) { \
+        INT* in = imIn->image[y]; \
+        INT* out = imOut->image[y]; \
+        xr = imIn->xsize-1; \
+        for (x = 0; x < imIn->xsize; x++, xr--) \
+            out[xr] = in[x]; \
     }
 
     ImagingSectionEnter(&cookie);
 
-    if (imIn->image8)
-        FLIP_HORIZ(image8)
-    else
-        FLIP_HORIZ(image32)
+    if (imIn->image8) {
+        FLIP_LEFT_RIGHT(UINT8, image8)
+    } else {
+        FLIP_LEFT_RIGHT(INT32, image32)
+    }
 
     ImagingSectionLeave(&cookie);
 
-#undef FLIP_HORIZ
+#undef FLIP_LEFT_RIGHT
 
     return imOut;
 }
@@ -59,7 +63,7 @@ ImagingFlipTopBottom(Imaging imOut, Imaging imIn)
     if (imIn->xsize != imOut->xsize || imIn->ysize != imOut->ysize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
     ImagingSectionEnter(&cookie);
 
@@ -78,23 +82,31 @@ ImagingRotate90(Imaging imOut, Imaging imIn)
 {
     ImagingSectionCookie cookie;
     int x, y, xx, yy, xr, xxsize, yysize;
+    int xxx, yyy, xxxsize, yyysize;
 
     if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
         return (Imaging) ImagingError_ModeError();
     if (imIn->xsize != imOut->ysize || imIn->ysize != imOut->xsize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
-#define ROTATE_90(image) \
+#define ROTATE_90(INT, image) \
     for (y = 0; y < imIn->ysize; y += ROTATE_CHUNK) { \
         for (x = 0; x < imIn->xsize; x += ROTATE_CHUNK) { \
             yysize = y + ROTATE_CHUNK < imIn->ysize ? y + ROTATE_CHUNK : imIn->ysize; \
             xxsize = x + ROTATE_CHUNK < imIn->xsize ? x + ROTATE_CHUNK : imIn->xsize; \
-            for (yy = y; yy < yysize; yy++) { \
-                xr = imIn->xsize - 1 - x; \
-                for (xx = x; xx < xxsize; xx++, xr--) { \
-                    imOut->image[xr][yy] = imIn->image[yy][xx]; \
+            for (yy = y; yy < yysize; yy += ROTATE_SMALL_CHUNK) { \
+                for (xx = x; xx < xxsize; xx += ROTATE_SMALL_CHUNK) { \
+                    yyysize = yy + ROTATE_SMALL_CHUNK < imIn->ysize ? yy + ROTATE_SMALL_CHUNK : imIn->ysize; \
+                    xxxsize = xx + ROTATE_SMALL_CHUNK < imIn->xsize ? xx + ROTATE_SMALL_CHUNK : imIn->xsize; \
+                    for (yyy = yy; yyy < yyysize; yyy++) { \
+                        INT* in = imIn->image[yyy]; \
+                        xr = imIn->xsize - 1 - xx; \
+                        for (xxx = xx; xxx < xxxsize; xxx++, xr--) { \
+                            imOut->image[xr][yyy] = in[xxx]; \
+                        } \
+                    } \
                 } \
             } \
         } \
@@ -103,9 +115,9 @@ ImagingRotate90(Imaging imOut, Imaging imIn)
     ImagingSectionEnter(&cookie);
 
     if (imIn->image8)
-        ROTATE_90(image8)
+        ROTATE_90(UINT8, image8)
     else
-        ROTATE_90(image32)
+        ROTATE_90(INT32, image32)
 
     ImagingSectionLeave(&cookie);
 
@@ -120,22 +132,30 @@ ImagingTranspose(Imaging imOut, Imaging imIn)
 {
     ImagingSectionCookie cookie;
     int x, y, xx, yy, xxsize, yysize;
+    int xxx, yyy, xxxsize, yyysize;
 
     if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
         return (Imaging) ImagingError_ModeError();
     if (imIn->xsize != imOut->ysize || imIn->ysize != imOut->xsize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
-#define TRANSPOSE(image) \
+#define TRANSPOSE(INT, image) \
     for (y = 0; y < imIn->ysize; y += ROTATE_CHUNK) { \
         for (x = 0; x < imIn->xsize; x += ROTATE_CHUNK) { \
             yysize = y + ROTATE_CHUNK < imIn->ysize ? y + ROTATE_CHUNK : imIn->ysize; \
             xxsize = x + ROTATE_CHUNK < imIn->xsize ? x + ROTATE_CHUNK : imIn->xsize; \
-            for (yy = y; yy < yysize; yy++) { \
-                for (xx = x; xx < xxsize; xx++) { \
-                    imOut->image[xx][yy] = imIn->image[yy][xx]; \
+            for (yy = y; yy < yysize; yy += ROTATE_SMALL_CHUNK) { \
+                for (xx = x; xx < xxsize; xx += ROTATE_SMALL_CHUNK) { \
+                    yyysize = yy + ROTATE_SMALL_CHUNK < imIn->ysize ? yy + ROTATE_SMALL_CHUNK : imIn->ysize; \
+                    xxxsize = xx + ROTATE_SMALL_CHUNK < imIn->xsize ? xx + ROTATE_SMALL_CHUNK : imIn->xsize; \
+                    for (yyy = yy; yyy < yyysize; yyy++) { \
+                        INT* in = imIn->image[yyy]; \
+                        for (xxx = xx; xxx < xxxsize; xxx++) { \
+                            imOut->image[xxx][yyy] = in[xxx]; \
+                        } \
+                    } \
                 } \
             } \
         } \
@@ -144,13 +164,64 @@ ImagingTranspose(Imaging imOut, Imaging imIn)
     ImagingSectionEnter(&cookie);
 
     if (imIn->image8)
-        TRANSPOSE(image8)
+        TRANSPOSE(UINT8, image8)
     else
-        TRANSPOSE(image32)
+        TRANSPOSE(INT32, image32)
 
     ImagingSectionLeave(&cookie);
 
 #undef TRANSPOSE
+
+    return imOut;
+}
+
+
+Imaging
+ImagingTransverse(Imaging imOut, Imaging imIn)
+{
+    ImagingSectionCookie cookie;
+    int x, y, xr, yr, xx, yy, xxsize, yysize;
+    int xxx, yyy, xxxsize, yyysize;
+
+    if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
+        return (Imaging) ImagingError_ModeError();
+    if (imIn->xsize != imOut->ysize || imIn->ysize != imOut->xsize)
+        return (Imaging) ImagingError_Mismatch();
+
+    ImagingCopyPalette(imOut, imIn);
+
+#define TRANSVERSE(INT, image) \
+    for (y = 0; y < imIn->ysize; y += ROTATE_CHUNK) { \
+        for (x = 0; x < imIn->xsize; x += ROTATE_CHUNK) { \
+            yysize = y + ROTATE_CHUNK < imIn->ysize ? y + ROTATE_CHUNK : imIn->ysize; \
+            xxsize = x + ROTATE_CHUNK < imIn->xsize ? x + ROTATE_CHUNK : imIn->xsize; \
+            for (yy = y; yy < yysize; yy += ROTATE_SMALL_CHUNK) { \
+                for (xx = x; xx < xxsize; xx += ROTATE_SMALL_CHUNK) { \
+                    yyysize = yy + ROTATE_SMALL_CHUNK < imIn->ysize ? yy + ROTATE_SMALL_CHUNK : imIn->ysize; \
+                    xxxsize = xx + ROTATE_SMALL_CHUNK < imIn->xsize ? xx + ROTATE_SMALL_CHUNK : imIn->xsize; \
+                    yr = imIn->ysize - 1 - yy; \
+                    for (yyy = yy; yyy < yyysize; yyy++, yr--) { \
+                        INT* in = imIn->image[yyy]; \
+                        xr = imIn->xsize - 1 - xx; \
+                        for (xxx = xx; xxx < xxxsize; xxx++, xr--) { \
+                            imOut->image[xr][yr] = in[xxx]; \
+                        } \
+                    } \
+                } \
+            } \
+        } \
+    }
+
+    ImagingSectionEnter(&cookie);
+
+    if (imIn->image8)
+        TRANSVERSE(UINT8, image8)
+    else
+        TRANSVERSE(INT32, image32)
+
+    ImagingSectionLeave(&cookie);
+
+#undef TRANSVERSE
 
     return imOut;
 }
@@ -167,22 +238,25 @@ ImagingRotate180(Imaging imOut, Imaging imIn)
     if (imIn->xsize != imOut->xsize || imIn->ysize != imOut->ysize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
-#define ROTATE_180(image)\
-    for (y = 0; y < imIn->ysize; y++, yr--) {\
-        xr = imIn->xsize-1;\
-        for (x = 0; x < imIn->xsize; x++, xr--)\
-            imOut->image[y][x] = imIn->image[yr][xr];\
+#define ROTATE_180(INT, image) \
+    for (y = 0; y < imIn->ysize; y++, yr--) { \
+        INT* in = imIn->image[y]; \
+        INT* out = imOut->image[yr]; \
+        xr = imIn->xsize-1; \
+        for (x = 0; x < imIn->xsize; x++, xr--) \
+            out[xr] = in[x]; \
     }
 
     ImagingSectionEnter(&cookie);
 
     yr = imIn->ysize-1;
-    if (imIn->image8)
-        ROTATE_180(image8)
-    else
-        ROTATE_180(image32)
+    if (imIn->image8) {
+        ROTATE_180(UINT8, image8)
+    } else {
+        ROTATE_180(INT32, image32)
+    }
 
     ImagingSectionLeave(&cookie);
 
@@ -197,23 +271,31 @@ ImagingRotate270(Imaging imOut, Imaging imIn)
 {
     ImagingSectionCookie cookie;
     int x, y, xx, yy, yr, xxsize, yysize;
+    int xxx, yyy, xxxsize, yyysize;
 
     if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
         return (Imaging) ImagingError_ModeError();
     if (imIn->xsize != imOut->ysize || imIn->ysize != imOut->xsize)
         return (Imaging) ImagingError_Mismatch();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
-#define ROTATE_270(image) \
+#define ROTATE_270(INT, image) \
     for (y = 0; y < imIn->ysize; y += ROTATE_CHUNK) { \
         for (x = 0; x < imIn->xsize; x += ROTATE_CHUNK) { \
             yysize = y + ROTATE_CHUNK < imIn->ysize ? y + ROTATE_CHUNK : imIn->ysize; \
             xxsize = x + ROTATE_CHUNK < imIn->xsize ? x + ROTATE_CHUNK : imIn->xsize; \
-            yr = imIn->ysize - 1 - y; \
-            for (yy = y; yy < yysize; yy++, yr--) { \
-                for (xx = x; xx < xxsize; xx++) { \
-                    imOut->image[xx][yr] = imIn->image[yy][xx]; \
+            for (yy = y; yy < yysize; yy += ROTATE_SMALL_CHUNK) { \
+                for (xx = x; xx < xxsize; xx += ROTATE_SMALL_CHUNK) { \
+                    yyysize = yy + ROTATE_SMALL_CHUNK < imIn->ysize ? yy + ROTATE_SMALL_CHUNK : imIn->ysize; \
+                    xxxsize = xx + ROTATE_SMALL_CHUNK < imIn->xsize ? xx + ROTATE_SMALL_CHUNK : imIn->xsize; \
+                    yr = imIn->ysize - 1 - yy; \
+                    for (yyy = yy; yyy < yyysize; yyy++, yr--) { \
+                        INT* in = imIn->image[yyy]; \
+                        for (xxx = xx; xxx < xxxsize; xxx++) { \
+                            imOut->image[xxx][yr] = in[xxx]; \
+                        } \
+                    } \
                 } \
             } \
         } \
@@ -222,9 +304,9 @@ ImagingRotate270(Imaging imOut, Imaging imIn)
     ImagingSectionEnter(&cookie);
 
     if (imIn->image8)
-        ROTATE_270(image8)
+        ROTATE_270(UINT8, image8)
     else
-        ROTATE_270(image32)
+        ROTATE_270(INT32, image32)
 
     ImagingSectionLeave(&cookie);
 
@@ -635,7 +717,7 @@ ImagingGenericTransform(
     if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
         return (Imaging) ImagingError_ModeError();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
     ImagingSectionEnter(&cookie);
 
@@ -682,7 +764,7 @@ ImagingScaleAffine(Imaging imOut, Imaging imIn,
     if (!imOut || !imIn || strcmp(imIn->mode, imOut->mode) != 0)
         return (Imaging) ImagingError_ModeError();
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
     if (x0 < 0)
         x0 = 0;
@@ -772,7 +854,7 @@ affine_fixed(Imaging imOut, Imaging imIn,
     int xx, yy;
     int a0, a1, a2, a3, a4, a5;
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
     xsize = (int) imIn->xsize;
     ysize = (int) imIn->ysize;
@@ -874,7 +956,7 @@ ImagingTransformAffine(Imaging imOut, Imaging imIn,
        following code is used.  maybe we should fall back on the slow
        generic transform engine in this case? */
 
-    ImagingCopyInfo(imOut, imIn);
+    ImagingCopyPalette(imOut, imIn);
 
     xsize = (int) imIn->xsize;
     ysize = (int) imIn->ysize;

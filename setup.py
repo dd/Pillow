@@ -17,7 +17,7 @@ import sys
 import subprocess
 
 from distutils.command.build_ext import build_ext
-from distutils import sysconfig
+from distutils import sysconfig, ccompiler
 from setuptools import Extension, setup, find_packages
 
 # monkey patch import hook. Even though flake8 says it's not used, it is.
@@ -44,6 +44,9 @@ DEBUG = False
 class DependencyException(Exception): pass
 class RequiredDependencyException(Exception): pass
 
+PLATFORM_MINGW = 'mingw' in ccompiler.get_default_compiler()
+PLATFORM_PYPY = hasattr(sys, 'pypy_version_info')
+
 def _dbg(s, tp=None):
     if DEBUG:
         if tp:
@@ -63,6 +66,9 @@ def _add_directory(path, subdir, where=None):
         else:
             _dbg('Inserting path %s', subdir)
             path.insert(where, subdir)
+    elif subdir in path and where is not None:
+        path.remove(subdir)
+        path.insert(where, subdir)
 
 
 def _find_include_file(self, include):
@@ -95,6 +101,12 @@ def _read(file):
         return fp.read()
 
 
+def get_version():
+    version_file = 'PIL/version.py'
+    with open(version_file, 'r') as f:
+        exec(compile(f.read(), version_file, 'exec'))
+    return locals()['__version__']
+
 try:
     import _tkinter
 except (ImportError, OSError):
@@ -102,7 +114,7 @@ except (ImportError, OSError):
     _tkinter = None
 
 NAME = 'Pillow'
-PILLOW_VERSION = '4.2.0.dev0'
+PILLOW_VERSION = get_version()
 JPEG_ROOT = None
 JPEG2K_ROOT = None
 ZLIB_ROOT = None
@@ -110,7 +122,7 @@ IMAGEQUANT_ROOT = None
 TIFF_ROOT = None
 FREETYPE_ROOT = None
 LCMS_ROOT = None
-
+RAQM_ROOT = None
 
 def _pkg_config(name):
     try:
@@ -128,7 +140,7 @@ def _pkg_config(name):
 
 class pil_build_ext(build_ext):
     class feature:
-        features = ['zlib', 'jpeg', 'tiff', 'freetype', 'lcms', 'webp',
+        features = ['zlib', 'jpeg', 'tiff', 'freetype', 'raqm', 'lcms', 'webp',
                     'webpmux', 'jpeg2000', 'imagequant']
 
         required = {'jpeg', 'zlib'}
@@ -356,6 +368,14 @@ class pil_build_ext(build_ext):
                 # work ;-)
                 self.add_multiarch_paths()
 
+                # termux support for android.
+                # system libraries (zlib) are installed in /system/lib
+                # headers are at $PREFIX/include
+                # user libs are at $PREFIX/lib
+                if os.environ.get('ANDROID_ROOT', None):
+                    _add_directory(library_dirs,
+                                  os.path.join(os.environ['ANDROID_ROOT'],'lib'))
+
         elif sys.platform.startswith("gnu"):
             self.add_multiarch_paths()
 
@@ -462,6 +482,10 @@ class pil_build_ext(build_ext):
                 # Add the directory to the include path so we can include
                 # <openjpeg.h> rather than having to cope with the versioned
                 # include path
+                # FIXME (melvyn-sopacua):
+                # At this point it's possible that best_path is already in
+                # self.compiler.include_dirs. Should investigate how that is
+                # possible.
                 _add_directory(self.compiler.include_dirs, best_path, 0)
                 feature.jpeg2000 = 'openjp2'
                 feature.openjpeg_version = '.'.join(str(x) for x in best_version)
@@ -508,6 +532,14 @@ class pil_build_ext(build_ext):
                     feature.freetype_version = freetype_version
                     if subdir:
                         _add_directory(self.compiler.include_dirs, subdir, 0)
+
+        if feature.want('raqm'):
+            _dbg('Looking for raqm')
+            if _find_include_file(self, "raqm.h"):
+                if _find_library_file(self, "raqm") and \
+                   _find_library_file(self, "harfbuzz") and \
+                   _find_library_file(self, "fribidi"):
+                    feature.raqm = ["raqm", "harfbuzz", "fribidi"]
 
         if feature.want('lcms'):
             _dbg('Looking for lcms')
@@ -578,6 +610,11 @@ class pil_build_ext(build_ext):
         if struct.unpack("h", "\0\1".encode('ascii'))[0] == 1:
             defs.append(("WORDS_BIGENDIAN", None))
 
+        if sys.platform == "win32" and not (PLATFORM_PYPY or PLATFORM_MINGW):
+            defs.append(("PILLOW_VERSION", '"\\"%s\\""'%PILLOW_VERSION))
+        else:
+            defs.append(("PILLOW_VERSION", '"%s"'%PILLOW_VERSION))
+
         exts = [(Extension("PIL._imaging",
                            files,
                            libraries=libs,
@@ -587,9 +624,14 @@ class pil_build_ext(build_ext):
         # additional libraries
 
         if feature.freetype:
-            exts.append(Extension("PIL._imagingft",
-                                  ["_imagingft.c"],
-                                  libraries=["freetype"]))
+            libs = ["freetype"]
+            defs = []
+            if feature.raqm:
+                libs.extend(feature.raqm)
+                defs.append(('HAVE_RAQM', None))
+            exts.append(Extension(
+                "PIL._imagingft", ["_imagingft.c"], libraries=libs,
+                define_macros=defs))
 
         if feature.lcms:
             extra = []
@@ -651,6 +693,7 @@ class pil_build_ext(build_ext):
             (feature.imagequant, "LIBIMAGEQUANT"),
             (feature.tiff, "LIBTIFF"),
             (feature.freetype, "FREETYPE2"),
+            (feature.raqm, "RAQM"),
             (feature.lcms, "LITTLECMS2"),
             (feature.webp, "WEBP"),
             (feature.webpmux, "WEBPMUX"),
@@ -741,7 +784,7 @@ try:
           test_suite='nose.collector',
           keywords=["Imaging", ],
           license='Standard PIL License',
-          zip_safe=not debug_build(), )
+          zip_safe=not (debug_build() or PLATFORM_MINGW), )
 except RequiredDependencyException as err:
     msg = """
 

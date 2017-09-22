@@ -1,7 +1,6 @@
 from helper import unittest, PillowTestCase, hopper
 
-from PIL import Image
-from PIL import ImageFilter
+from PIL import Image, ImageFilter
 
 
 class TestImageFilter(PillowTestCase):
@@ -9,10 +8,11 @@ class TestImageFilter(PillowTestCase):
     def test_sanity(self):
 
         def filter(filter):
-            im = hopper("L")
-            out = im.filter(filter)
-            self.assertEqual(out.mode, im.mode)
-            self.assertEqual(out.size, im.size)
+            for mode in ["L", "RGB", "CMYK"]:
+                im = hopper(mode)
+                out = im.filter(filter)
+                self.assertEqual(out.mode, im.mode)
+                self.assertEqual(out.size, im.size)
 
         filter(ImageFilter.BLUR)
         filter(ImageFilter.CONTOUR)
@@ -28,13 +28,13 @@ class TestImageFilter(PillowTestCase):
         filter(ImageFilter.MedianFilter)
         filter(ImageFilter.MinFilter)
         filter(ImageFilter.ModeFilter)
-        filter(ImageFilter.Kernel((3, 3), list(range(9))))
         filter(ImageFilter.GaussianBlur)
         filter(ImageFilter.GaussianBlur(5))
+        filter(ImageFilter.BoxBlur(5))
         filter(ImageFilter.UnsharpMask)
         filter(ImageFilter.UnsharpMask(10))
 
-        self.assertRaises(TypeError, lambda: filter("hello"))
+        self.assertRaises(TypeError, filter, "hello")
 
     def test_crash(self):
 
@@ -83,7 +83,7 @@ class TestImageFilter(PillowTestCase):
 
         self.assertEqual(rankfilter("1"), (0, 4, 8))
         self.assertEqual(rankfilter("L"), (0, 4, 8))
-        self.assertRaises(ValueError, lambda: rankfilter("P"))
+        self.assertRaises(ValueError, rankfilter, "P")
         self.assertEqual(rankfilter("RGB"), ((0, 0, 0), (4, 0, 0), (8, 0, 0)))
         self.assertEqual(rankfilter("I"), (0, 4, 8))
         self.assertEqual(rankfilter("F"), (0.0, 4.0, 8.0))
@@ -93,6 +93,40 @@ class TestImageFilter(PillowTestCase):
 
         self.assertEqual(rankfilter.size, 1)
         self.assertEqual(rankfilter.rank, 2)
+
+    def test_consistency_3x3(self):
+        source = Image.open("Tests/images/hopper.bmp")
+        reference = Image.open("Tests/images/hopper_emboss.bmp")
+        kernel = ImageFilter.Kernel((3, 3),
+                                    (-1, -1,  0,
+                                     -1,  0,  1,
+                                      0,  1,  1), .3)
+        source = source.split() * 2
+        reference = reference.split() * 2
+
+        for mode in ['L', 'LA', 'RGB', 'CMYK']:
+            self.assert_image_equal(
+                Image.merge(mode, source[:len(mode)]).filter(kernel),
+                Image.merge(mode, reference[:len(mode)]),
+            )
+
+    def test_consistency_5x5(self):
+        source = Image.open("Tests/images/hopper.bmp")
+        reference = Image.open("Tests/images/hopper_emboss_more.bmp")
+        kernel = ImageFilter.Kernel((5, 5),
+                                    (-1, -1, -1, -1,  0,
+                                     -1, -1, -1,  0,  1,
+                                     -1, -1,  0,  1,  1,
+                                     -1,  0,  1,  1,  1,
+                                      0,  1,  1,  1,  1), 0.3)
+        source = source.split() * 2
+        reference = reference.split() * 2
+
+        for mode in ['L', 'LA', 'RGB', 'CMYK']:
+            self.assert_image_equal(
+                Image.merge(mode, source[:len(mode)]).filter(kernel),
+                Image.merge(mode, reference[:len(mode)]),
+            )
 
 
 if __name__ == '__main__':

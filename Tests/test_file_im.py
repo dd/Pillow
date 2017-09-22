@@ -15,6 +15,16 @@ class TestFileIm(PillowTestCase):
         self.assertEqual(im.size, (128, 128))
         self.assertEqual(im.format, "IM")
 
+    def test_tell(self):
+        # Arrange
+        im = Image.open(TEST_IM)
+
+        # Act
+        frame = im.tell()
+
+        # Assert
+        self.assertEqual(frame, 0)
+
     def test_n_frames(self):
         im = Image.open(TEST_IM)
         self.assertEqual(im.n_frames, 1)
@@ -30,21 +40,30 @@ class TestFileIm(PillowTestCase):
                 im.seek(n_frames)
                 break
             except EOFError:
-                self.assertTrue(im.tell() < n_frames)
+                self.assertLess(im.tell(), n_frames)
 
     def test_roundtrip(self):
-        out = self.tempfile('temp.im')
-        im = hopper()
-        im.save(out)
-        reread = Image.open(out)
+        for mode in ["RGB", "P"]:
+            out = self.tempfile('temp.im')
+            im = hopper(mode)
+            im.save(out)
+            reread = Image.open(out)
 
-        self.assert_image_equal(reread, im)
+            self.assert_image_equal(reread, im)
+
+    def test_save_unsupported_mode(self):
+        out = self.tempfile('temp.im')
+        im = hopper("HSV")
+        self.assertRaises(ValueError, im.save, out)
 
     def test_invalid_file(self):
         invalid_file = "Tests/images/flower.jpg"
 
         self.assertRaises(SyntaxError,
-                          lambda: ImImagePlugin.ImImageFile(invalid_file))
+                          ImImagePlugin.ImImageFile, invalid_file)
+
+    def test_number(self):
+        self.assertEqual(1.2, ImImagePlugin.number("1.2"))
 
 
 if __name__ == '__main__':

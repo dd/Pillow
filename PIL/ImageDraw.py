@@ -88,7 +88,10 @@ class ImageDraw(object):
         self.font = None
 
     def getfont(self):
-        """Get the current default font."""
+        """
+        Get the current default font.
+
+        :returns: An image font."""
         if not self.font:
             # FIXME: should add a font repository
             from . import ImageFont
@@ -208,7 +211,6 @@ class ImageDraw(object):
         if self._multiline_check(text):
             return self.multiline_text(xy, text, fill, font, anchor, kerning,
                                        *args, **kwargs)
-
         ink, fill = self._getink(fill)
         if font is None:
             font = self.getfont()
@@ -217,17 +219,19 @@ class ImageDraw(object):
         if ink is not None:
             try:
                 mask, offset = font.getmask2(text, self.fontmode,
-                                             kerning=kerning)
+                                             kerning=kerning, *args, **kwargs)
                 xy = xy[0] + offset[0], xy[1] + offset[1]
             except AttributeError:
                 try:
-                    mask = font.getmask(text, self.fontmode, kerning)
+                    mask = font.getmask(text, self.fontmode, kerning, *args,
+                                        **kwargs)
                 except TypeError:
                     mask = font.getmask(text, kerning)
             self.draw.draw_bitmap(xy, mask, ink)
 
     def multiline_text(self, xy, text, fill=None, font=None, anchor=None,
-                       spacing=4, align="left", kerning=0):
+                       spacing=4, align="left", direction=None, features=None,
+                       kerning=0):
         widths = []
         max_width = 0
         lines = self._multiline_split(text)
@@ -246,25 +250,32 @@ class ImageDraw(object):
                 left += (max_width - widths[idx])
             else:
                 assert False, 'align must be "left", "center" or "right"'
-            self.text((left, top), line, fill, font, anchor, kerning)
+
+            self.text((left, top), line, fill, font, anchor,
+                      direction=direction, features=features, kerning=kerning)
             top += line_spacing
             left = xy[0]
 
-    def textsize(self, text, font=None, kerning=0, *args, **kwargs):
+    def textsize(self, text, font=None, spacing=4, direction=None,
+                 features=None, kerning=0):
         """Get the size of a given string, in pixels."""
         if self._multiline_check(text):
-            return self.multiline_textsize(text, font, kerning, *args, **kwargs)
+            return self.multiline_textsize(text, font, spacing,
+                                           direction, features, kerning)
 
         if font is None:
             font = self.getfont()
-        return font.getsize(text, kerning)
+        return font.getsize(text, direction, features, kerning)
 
-    def multiline_textsize(self, text, font=None, spacing=4, kerning=0):
+    def multiline_textsize(self, text, font=None, spacing=4, direction=None,
+                           features=None, kerning=0):
         max_width = 0
         lines = self._multiline_split(text)
         line_spacing = self.textsize('A', font=font)[1] + spacing
         for line in lines:
-            line_width, line_height = self.textsize(line, font, kerning)
+            line_width, line_height = self.textsize(line, font, spacing,
+                                                    direction, features,
+                                                    kerning)
             max_width = max(max_width, line_width)
         return max_width, len(lines)*line_spacing
 
@@ -284,6 +295,7 @@ def Draw(im, mode=None):
         return im.getdraw(mode)
     except AttributeError:
         return ImageDraw(im, mode)
+
 
 # experimental access to the outline API
 try:
@@ -316,7 +328,7 @@ def getdraw(im=None, hints=None):
     return im, handler
 
 
-def floodfill(image, xy, value, border=None):
+def floodfill(image, xy, value, border=None, thresh=0):
     """
     (experimental) Fills a bounded region with a given color.
 
@@ -327,13 +339,17 @@ def floodfill(image, xy, value, border=None):
         pixels with a color different from the border color.  If not given,
         the region consists of pixels having the same color as the seed
         pixel.
+    :param thresh: Optional threshold value which specifies a maximum
+        tolerable difference of a pixel value from the 'background' in
+        order for it to be replaced. Useful for filling regions of non-
+        homogeneous, but similar, colors.
     """
     # based on an implementation by Eric S. Raymond
     pixel = image.load()
     x, y = xy
     try:
         background = pixel[x, y]
-        if background == value:
+        if _color_diff(value, background) <= thresh:
             return  # seed point already has fill color
         pixel[x, y] = value
     except (ValueError, IndexError):
@@ -349,7 +365,7 @@ def floodfill(image, xy, value, border=None):
                     except IndexError:
                         pass
                     else:
-                        if p == background:
+                        if _color_diff(p, background) <= thresh:
                             pixel[s, t] = value
                             newedge.append((s, t))
             edge = newedge
@@ -367,3 +383,10 @@ def floodfill(image, xy, value, border=None):
                             pixel[s, t] = value
                             newedge.append((s, t))
             edge = newedge
+
+
+def _color_diff(rgb1, rgb2):
+    """
+    Uses 1-norm distance to calculate difference between two rgb values.
+    """
+    return abs(rgb1[0]-rgb2[0]) +  abs(rgb1[1]-rgb2[1]) +  abs(rgb1[2]-rgb2[2])

@@ -121,6 +121,7 @@ def Ghostscript(tile, size, fp, scale=1):
                "-q",                         # quiet mode
                "-g%dx%d" % size,             # set output geometry (pixels)
                "-r%fx%f" % res,              # set input DPI (dots per inch)
+               "-dBATCH",                    # exit after processing
                "-dNOPAUSE",                  # don't pause between pages,
                "-dSAFER",                    # safe mode
                "-sDEVICE=ppmraw",            # ppm driver
@@ -128,6 +129,7 @@ def Ghostscript(tile, size, fp, scale=1):
                "-c", "%d %d translate" % (-bbox[0], -bbox[1]),
                                              # adjust for image origin
                "-f", infile,                 # input file
+               "-c", "showpage",             # showpage (see: https://bugs.ghostscript.com/show_bug.cgi?id=698272)
                ]
 
     if gs_windows_binary is not None:

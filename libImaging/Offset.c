@@ -27,11 +27,11 @@ ImagingOffset(Imaging im, int xoffset, int yoffset)
     if (!im)
 	return (Imaging) ImagingError_ModeError();
 
-    imOut = ImagingNew(im->mode, im->xsize, im->ysize);
+    imOut = ImagingNewDirty(im->mode, im->xsize, im->ysize);
     if (!imOut)
 	return NULL;
 
-    ImagingCopyInfo(imOut, im);
+    ImagingCopyPalette(imOut, im);
 
     /* make offsets positive to avoid negative coordinates */
     xoffset %= im->xsize;

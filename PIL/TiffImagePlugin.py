@@ -201,6 +201,17 @@ OPEN_INFO = {
     (II, 2, (1,), 1, (8, 8, 8, 8), (999,)): ("RGBA", "RGBA"),  # Corel Draw 10
     (MM, 2, (1,), 1, (8, 8, 8, 8), (999,)): ("RGBA", "RGBA"),  # Corel Draw 10
 
+    (II, 2, (1,), 1, (16, 16, 16), ()): ("RGB", "RGB;16L"),
+    (MM, 2, (1,), 1, (16, 16, 16), ()): ("RGB", "RGB;16B"),
+    (II, 2, (1,), 1, (16, 16, 16, 16), ()): ("RGBA", "RGBA;16L"),
+    (MM, 2, (1,), 1, (16, 16, 16, 16), ()): ("RGBA", "RGBA;16B"),
+    (II, 2, (1,), 1, (16, 16, 16, 16), (0,)): ("RGBX", "RGBX;16L"),
+    (MM, 2, (1,), 1, (16, 16, 16, 16), (0,)): ("RGBX", "RGBX;16B"),
+    (II, 2, (1,), 1, (16, 16, 16, 16), (1,)): ("RGBA", "RGBa;16L"),
+    (MM, 2, (1,), 1, (16, 16, 16, 16), (1,)): ("RGBA", "RGBa;16B"),
+    (II, 2, (1,), 1, (16, 16, 16, 16), (2,)): ("RGBA", "RGBA;16L"),
+    (MM, 2, (1,), 1, (16, 16, 16, 16), (2,)): ("RGBA", "RGBA;16B"),
+
     (II, 3, (1,), 1, (1,), ()): ("P", "P;1"),
     (MM, 3, (1,), 1, (1,), ()): ("P", "P;1"),
     (II, 3, (1,), 2, (1,), ()): ("P", "P;1R"),
@@ -230,7 +241,12 @@ OPEN_INFO = {
     (MM, 8, (1,), 1, (8, 8, 8), ()): ("LAB", "LAB"),
 }
 
-PREFIXES = [b"MM\000\052", b"II\052\000", b"II\xBC\000"]
+PREFIXES = [
+    b"MM\x00\x2A",  # Valid TIFF header with big-endian byte order
+    b"II\x2A\x00",  # Valid TIFF header with little-endian byte order
+    b"MM\x2A\x00",  # Invalid TIFF header, assume big-endian
+    b"II\x00\x2A",  # Invalid TIFF header, assume little-endian
+]
 
 
 def _accept(prefix):
@@ -241,6 +257,7 @@ def _limit_rational(val, max_val):
     inv = abs(val) > 1
     n_d = IFDRational(1 / val if inv else val).limit_rational(max_val)
     return n_d[::-1] if inv else n_d
+
 
 ##
 # Wrapper for TIFF IFDs.
@@ -462,15 +479,6 @@ class ImageFileDirectory_v2(collections.MutableMapping):
     def __str__(self):
         return str(dict(self))
 
-    def as_dict(self):
-        """Return a dictionary of the image's tags.
-
-        .. deprecated:: 3.0.0
-        """
-        warnings.warn("as_dict() is deprecated. " +
-                      "Please use dict(ifd) instead.", DeprecationWarning)
-        return dict(self)
-
     def named(self):
         """
         :returns: dict of name|key: value
@@ -535,17 +543,35 @@ class ImageFileDirectory_v2(collections.MutableMapping):
                             self.tagtype[tag] = 2
 
         if self.tagtype[tag] == 7 and bytes is not str:
-            values = [value.encode("ascii", 'replace') if isinstance(value, str) else value]
+            values = [value.encode("ascii", 'replace') if isinstance(
+                      value, str) else value]
 
         values = tuple(info.cvt_enum(value) for value in values)
 
         dest = self._tags_v1 if legacy_api else self._tags_v2
 
-        if info.length == 1:
-            if legacy_api and self.tagtype[tag] in [5, 10]:
+        # Three branches:
+        # Spec'd length == 1, Actual length 1, store as element
+        # Spec'd length == 1, Actual > 1, Warn and truncate. Formerly barfed.
+        # No Spec, Actual length 1, Formerly (<4.2) returned a 1 element tuple.
+        # Don't mess with the legacy api, since it's frozen.
+        if ((info.length == 1) or 
+            (info.length is None and len(values) == 1 and not legacy_api)): 
+            # Don't mess with the legacy api, since it's frozen.
+            if legacy_api and self.tagtype[tag] in [5, 10]: # rationals
                 values = values,
-            dest[tag], = values
+            try:
+                dest[tag], = values
+            except ValueError:
+                # We've got a builtin tag with 1 expected entry
+                warnings.warn(
+                    "Metadata Warning, tag %s had too many entries: %s, expected 1" % (
+                        tag, len(values)))
+                dest[tag] = values[0]
+
         else:
+            # Spec'd length > 1 or undefined
+            # Unspec'd, and length > 1
             dest[tag] = values
 
     def __delitem__(self, tag):
@@ -588,9 +614,13 @@ class ImageFileDirectory_v2(collections.MutableMapping):
             b"".join(self._pack(fmt, value) for value in values))
 
     list(map(_register_basic,
-             [(3, "H", "short"), (4, "L", "long"),
-              (6, "b", "signed byte"), (8, "h", "signed short"),
-              (9, "l", "signed long"), (11, "f", "float"), (12, "d", "double")]))
+             [(3, "H", "short"),
+              (4, "L", "long"),
+              (6, "b", "signed byte"),
+              (8, "h", "signed short"),
+              (9, "l", "signed long"),
+              (11, "f", "float"),
+              (12, "d", "double")]))
 
     @_register_loader(1, 1)  # Basic type, except for the legacy API.
     def load_byte(self, data, legacy_api=True):
@@ -662,7 +692,8 @@ class ImageFileDirectory_v2(collections.MutableMapping):
 
         try:
             for i in range(self._unpack("H", self._ensure_read(fp, 2))[0]):
-                tag, typ, count, data = self._unpack("HHL4s", self._ensure_read(fp, 12))
+                tag, typ, count, data = self._unpack("HHL4s",
+                                                     self._ensure_read(fp, 12))
                 if DEBUG:
                     tagname = TiffTags.lookup(tag).name
                     typname = TYPES.get(typ, "unknown")
@@ -690,8 +721,8 @@ class ImageFileDirectory_v2(collections.MutableMapping):
 
                 if len(data) != size:
                     warnings.warn("Possibly corrupt EXIF data.  "
-                                  "Expecting to read %d bytes but only got %d. "
-                                  "Skipping tag %s" % (size, len(data), tag))
+                                  "Expecting to read %d bytes but only got %d."
+                                  " Skipping tag %s" % (size, len(data), tag))
                     continue
 
                 if not data:
@@ -750,7 +781,8 @@ class ImageFileDirectory_v2(collections.MutableMapping):
             if len(data) <= 4:
                 entries.append((tag, typ, count, data.ljust(4, b"\0"), b""))
             else:
-                entries.append((tag, typ, count, self._pack("L", offset), data))
+                entries.append((tag, typ, count, self._pack("L", offset),
+                                data))
                 offset += (len(data) + 1) // 2 * 2  # pad to word
 
         # update strip offset data to point beyond auxiliary data
@@ -778,6 +810,7 @@ class ImageFileDirectory_v2(collections.MutableMapping):
                 fp.write(b"\0")
 
         return offset
+
 
 ImageFileDirectory_v2._load_dispatch = _load_dispatch
 ImageFileDirectory_v2._write_dispatch = _write_dispatch
@@ -995,8 +1028,10 @@ class TiffImageFile(ImageFile.ImageFile):
             args = rawmode, ""
             if JPEGTABLES in self.tag_v2:
                 # Hack to handle abbreviated JPEG headers
-                # FIXME This will fail with more than one value
-                self.tile_prefix, = self.tag_v2[JPEGTABLES]
+                # Definition of JPEGTABLES is that the count
+                # is the number of bytes in the tables datastream
+                # so, it should always be 1 in our tag info
+                self.tile_prefix = self.tag_v2[JPEGTABLES]
         elif compression == "packbits":
             args = rawmode
         elif compression == "tiff_lzw":
@@ -1178,7 +1213,8 @@ class TiffImageFile(ImageFile.ImageFile):
                 self.info["dpi"] = xres * 2.54, yres * 2.54
             elif resunit is None:  # used to default to 1, but now 2)
                 self.info["dpi"] = xres, yres
-                # For backward compatibility, we also preserve the old behavior.
+                # For backward compatibility,
+                # we also preserve the old behavior
                 self.info["resolution"] = xres, yres
             else:  # No absolute unit of measurement
                 self.info["resolution"] = xres, yres
@@ -1294,6 +1330,8 @@ class TiffImageFile(ImageFile.ImageFile):
         if self.mode == "P":
             palette = [o8(b // 256) for b in self.tag_v2[COLORMAP]]
             self.palette = ImagePalette.raw("RGB;L", b"".join(palette))
+
+
 #
 # --------------------------------------------------------------------
 # Write TIFF files
@@ -1682,13 +1720,10 @@ class AppendingTiffWriter:
 
     def fixIFD(self):
         numTags = self.readShort()
-        # trace("fixing IFD at %X; number of tags: %u (0x%X)", self.f.tell()-2,
-        #      numTags, numTags)
 
         for i in range(numTags):
-            tag, fieldType, count = struct.unpack(self.tagFormat, self.f.read(8))
-            # trace("  at %X: tag %u (0x%X), type %u, count %u", self.f.tell()-8,
-            #      tag, tag, fieldType, count)
+            tag, fieldType, count = struct.unpack(self.tagFormat,
+                                                  self.f.read(8))
 
             fieldSize = self.fieldSizes[fieldType]
             totalSize = fieldSize * count
@@ -1742,19 +1777,31 @@ class AppendingTiffWriter:
 
 
 def _save_all(im, fp, filename):
-    if not hasattr(im, "n_frames"):
+    encoderinfo = im.encoderinfo.copy()
+    encoderconfig = im.encoderconfig
+    append_images = encoderinfo.get("append_images", [])
+    if not hasattr(im, "n_frames") and not len(append_images):
         return _save(im, fp, filename)
 
     cur_idx = im.tell()
     try:
         with AppendingTiffWriter(fp) as tf:
-            for idx in range(im.n_frames):
-                im.seek(idx)
-                im.load()
-                _save(im, tf, filename)
-                tf.newFrame()
+            for ims in [im]+append_images:
+                ims.encoderinfo = encoderinfo
+                ims.encoderconfig = encoderconfig
+                if not hasattr(ims, "n_frames"):
+                    nfr = 1
+                else:
+                    nfr = ims.n_frames
+
+                for idx in range(nfr):
+                    ims.seek(idx)
+                    ims.load()
+                    _save(ims, tf, filename)
+                    tf.newFrame()
     finally:
         im.seek(cur_idx)
+
 
 #
 # --------------------------------------------------------------------

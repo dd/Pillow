@@ -59,7 +59,7 @@ class TestFilePdf(PillowTestCase):
         im = hopper("LA")
         outfile = self.tempfile("temp_LA.pdf")
 
-        self.assertRaises(ValueError, lambda: im.save(outfile))
+        self.assertRaises(ValueError, im.save, outfile)
 
     def test_save_all(self):
         # Single frame image
@@ -70,6 +70,12 @@ class TestFilePdf(PillowTestCase):
 
         outfile = self.tempfile('temp.pdf')
         im.save(outfile, save_all=True)
+
+        self.assertTrue(os.path.isfile(outfile))
+        self.assertGreater(os.path.getsize(outfile), 0)
+
+        # Append images
+        im.save(outfile, save_all=True, append_images=[hopper()])
 
         self.assertTrue(os.path.isfile(outfile))
         self.assertGreater(os.path.getsize(outfile), 0)

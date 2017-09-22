@@ -6,6 +6,7 @@ import sys
 from helper import unittest, PillowTestCase, hopper, py3
 
 from PIL import Image, TiffImagePlugin
+from PIL.TiffImagePlugin import X_RESOLUTION, Y_RESOLUTION, RESOLUTION_UNIT
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,14 @@ class TestFileTiff(PillowTestCase):
         self.assertEqual(im.tile, [('raw', (0, 0, 55, 43), 8, ('RGBa', 0, 1))])
         im.load()
 
+    def test_16bit_RGBa_tiff(self):
+        im = Image.open("Tests/images/tiff_16bit_RGBa.tiff")
+
+        self.assertEqual(im.mode, "RGBA")
+        self.assertEqual(im.size, (100, 40))
+        self.assertEqual(im.tile, [('tiff_lzw', (0, 0, 100, 40), 50, 'RGBa;16B')])
+        im.load()
+
     def test_gimp_tiff(self):
         # Read TIFF JPEG images from GIMP [@PIL168]
 
@@ -76,8 +85,11 @@ class TestFileTiff(PillowTestCase):
         im = Image.open("Tests/images/copyleft.tiff")
         self.assertEqual(im.mode, 'RGB')
 
+    def test_set_legacy_api(self):
+        with self.assertRaises(Exception):
+            ImageFileDirectory_v2.legacy_api = None
+
     def test_xyres_tiff(self):
-        from PIL.TiffImagePlugin import X_RESOLUTION, Y_RESOLUTION
         filename = "Tests/images/pil168.tif"
         im = Image.open(filename)
 
@@ -94,7 +106,6 @@ class TestFileTiff(PillowTestCase):
         self.assertEqual(im.info['dpi'], (72., 72.))
 
     def test_xyres_fallback_tiff(self):
-        from PIL.TiffImagePlugin import X_RESOLUTION, Y_RESOLUTION, RESOLUTION_UNIT
         filename = "Tests/images/compression.tif"
         im = Image.open(filename)
 
@@ -112,7 +123,6 @@ class TestFileTiff(PillowTestCase):
         self.assertEqual(im.info['dpi'], (100., 100.))
 
     def test_int_resolution(self):
-        from PIL.TiffImagePlugin import X_RESOLUTION, Y_RESOLUTION
         filename = "Tests/images/pil168.tif"
         im = Image.open(filename)
 
@@ -123,7 +133,6 @@ class TestFileTiff(PillowTestCase):
         self.assertEqual(im.info['dpi'], (71., 71.))
 
     def test_save_setting_missing_resolution(self):
-        from PIL.TiffImagePlugin import X_RESOLUTION, Y_RESOLUTION
         b = BytesIO()
         Image.open("Tests/images/10ct_32bit_128.tiff").save(
             b, format="tiff", resolution=123.45)
@@ -135,11 +144,11 @@ class TestFileTiff(PillowTestCase):
         invalid_file = "Tests/images/flower.jpg"
 
         self.assertRaises(SyntaxError,
-                          lambda: TiffImagePlugin.TiffImageFile(invalid_file))
+                          TiffImagePlugin.TiffImageFile, invalid_file)
 
         TiffImagePlugin.PREFIXES.append(b"\xff\xd8\xff\xe0")
         self.assertRaises(SyntaxError,
-                          lambda: TiffImagePlugin.TiffImageFile(invalid_file))
+                          TiffImagePlugin.TiffImageFile, invalid_file)
         TiffImagePlugin.PREFIXES.pop()
 
     def test_bad_exif(self):
@@ -158,7 +167,7 @@ class TestFileTiff(PillowTestCase):
     def test_save_unsupported_mode(self):
         im = hopper("HSV")
         outfile = self.tempfile("temp.tif")
-        self.assertRaises(IOError, lambda: im.save(outfile))
+        self.assertRaises(IOError, im.save, outfile)
 
     def test_little_endian(self):
         im = Image.open('Tests/images/16bit.cropped.tif')
@@ -237,7 +246,7 @@ class TestFileTiff(PillowTestCase):
                 im.seek(n_frames)
                 break
             except EOFError:
-                self.assertTrue(im.tell() < n_frames)
+                self.assertLess(im.tell(), n_frames)
 
     def test_multipage(self):
         # issue #862
@@ -273,16 +282,6 @@ class TestFileTiff(PillowTestCase):
 
         # Assert
         self.assertIsInstance(ret, str)
-
-    def test_as_dict_deprecation(self):
-        # Arrange
-        filename = "Tests/images/pil136.tiff"
-        im = Image.open(filename)
-
-        self.assert_warning(DeprecationWarning, im.tag_v2.as_dict)
-        self.assert_warning(DeprecationWarning, im.tag.as_dict)
-        self.assertEqual(dict(im.tag_v2), im.tag_v2.as_dict())
-        self.assertEqual(dict(im.tag), im.tag.as_dict())
 
     def test_dict(self):
         # Arrange
@@ -345,7 +344,7 @@ class TestFileTiff(PillowTestCase):
         filename = "Tests/images/pil136.tiff"
         im = Image.open(filename)
         self.assertEqual(im.tell(), 0)
-        self.assertRaises(EOFError, lambda: im.seek(1))
+        self.assertRaises(EOFError, im.seek, 1)
 
     def test__limit_rational_int(self):
         from PIL.TiffImagePlugin import _limit_rational
@@ -454,11 +453,23 @@ class TestFileTiff(PillowTestCase):
         with Image.open(mp) as im:
             self.assertEqual(im.n_frames, 3)
 
+        # Test appending images
+        mp = io.BytesIO()
+        im = Image.new('RGB', (100, 100), '#f00')
+        ims = [Image.new('RGB', (100, 100), color) for color
+               in ['#0f0', '#00f']]
+        im.save(mp, format="TIFF", save_all=True, append_images=ims)
+
+        mp.seek(0, os.SEEK_SET)
+        reread = Image.open(mp)
+        self.assertEqual(reread.n_frames, 3)
+
+
     def test_saving_icc_profile(self):
         # Tests saving TIFF with icc_profile set.
         # At the time of writing this will only work for non-compressed tiffs
-        # as libtiff does not support embedded ICC profiles, ImageFile._save(..)
-        # however does.
+        # as libtiff does not support embedded ICC profiles,
+        # ImageFile._save(..) however does.
         im = Image.new('RGB', (1, 1))
         im.info['icc_profile'] = 'Dummy value'
 
@@ -484,18 +495,16 @@ class TestFileTiff(PillowTestCase):
 
     def test_close_on_load_nonexclusive(self):
         tmpfile = self.tempfile("temp.tif")
-        
+
         with Image.open("Tests/images/uint16_1_4660.tif") as im:
             im.save(tmpfile)
 
-        f = open(tmpfile, 'rb')
-        im = Image.open(f)
-        fp = im.fp
-        self.assertFalse(fp.closed)
-        im.load()
-        self.assertFalse(fp.closed)
-
-        
+        with open(tmpfile, 'rb') as f:
+            im = Image.open(f)
+            fp = im.fp
+            self.assertFalse(fp.closed)
+            im.load()
+            self.assertFalse(fp.closed)
 
 @unittest.skipUnless(sys.platform.startswith('win32'), "Windows only")
 class TestFileTiffW32(PillowTestCase):
@@ -503,23 +512,24 @@ class TestFileTiffW32(PillowTestCase):
         tmpfile = self.tempfile("temp.tif")
         import os
 
-        # this is an mmaped file. 
+        # this is an mmaped file.
         with Image.open("Tests/images/uint16_1_4660.tif") as im:
             im.save(tmpfile)
 
         im = Image.open(tmpfile)
         fp = im.fp
         self.assertFalse(fp.closed)
-        self.assertRaises(Exception, lambda: os.remove(tmpfile))
+        self.assertRaises(Exception, os.remove, tmpfile)
         im.load()
         self.assertTrue(fp.closed)
 
         # this closes the mmap
         im.close()
-        
+
         # this should not fail, as load should have closed the file pointer,
         # and close should have closed the mmap
         os.remove(tmpfile)
+
 
 if __name__ == '__main__':
     unittest.main()

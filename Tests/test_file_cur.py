@@ -21,13 +21,13 @@ class TestFileCur(PillowTestCase):
         invalid_file = "Tests/images/flower.jpg"
 
         self.assertRaises(SyntaxError,
-                          lambda: CurImagePlugin.CurImageFile(invalid_file))
+                          CurImagePlugin.CurImageFile, invalid_file)
 
         no_cursors_file = "Tests/images/no_cursors.cur"
 
         cur = CurImagePlugin.CurImageFile(TEST_FILE)
-        cur.fp = open(no_cursors_file, "rb")
-        self.assertRaises(TypeError, cur._open)
+        with open(no_cursors_file, "rb") as cur.fp:
+            self.assertRaises(TypeError, cur._open)
 
 
 if __name__ == '__main__':

@@ -24,6 +24,10 @@ matrix:
     - env: DOCKER="ubuntu-xenial-amd64"
     - env: DOCKER="ubuntu-precise-amd64"
     - env: DOCKER="debian-stretch-x86"
+    - env: DOCKER="centos-6-amd64"
+    - env: DOCKER="amazon-amd64"
+    - env: DOCKER="fedora-24-amd64"
+    - env: DOCKER="fedora-26-amd64"
 
 dist: trusty
 
@@ -48,6 +52,8 @@ script:
        if [ "$DOCKER" == "" ]; then
           .travis/script.sh
        else
+          # the Pillow user in the docker container is UID 1000
+          sudo chown -R 1000 $TRAVIS_BUILD_DIR
           docker run -v $TRAVIS_BUILD_DIR:/Pillow pythonpillow/$DOCKER
        fi
 

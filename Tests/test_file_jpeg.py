@@ -93,7 +93,7 @@ class TestFileJpeg(PillowTestCase):
         self.assertEqual(test(72), (72, 72))
         self.assertEqual(test(300), (300, 300))
         self.assertEqual(test(100, 200), (100, 200))
-        self.assertEqual(test(0), None)  # square pixels
+        self.assertIsNone(test(0))  # square pixels
 
     def test_icc(self):
         # Test ICC support
@@ -132,6 +132,19 @@ class TestFileJpeg(PillowTestCase):
         test(ImageFile.MAXBLOCK)  # full buffer block
         test(ImageFile.MAXBLOCK+1)  # full buffer block plus one byte
         test(ImageFile.MAXBLOCK*4+3)  # large block
+
+    def test_large_icc_meta(self):
+        # https://github.com/python-pillow/Pillow/issues/148
+        # Sometimes the meta data on the icc_profile block is bigger than
+        # Image.MAXBLOCK or the image size.
+        im = Image.open('Tests/images/icc_profile_big.jpg')
+        f = self.tempfile("temp.jpg")
+        icc_profile = im.info["icc_profile"]
+        try:
+            im.save(f, format='JPEG', progressive=True,quality=95,
+                    icc_profile=icc_profile, optimize=True)
+        except IOError:
+            self.fail("Failed saving image with icc larger than image size")
 
     def test_optimize(self):
         im1 = self.roundtrip(hopper())
@@ -286,7 +299,7 @@ class TestFileJpeg(PillowTestCase):
         self.assertEqual(getsampling(im), (1, 1, 1, 1, 1, 1))
         im = self.roundtrip(hopper(), subsampling=1)  # 4:2:2
         self.assertEqual(getsampling(im), (2, 1, 1, 1, 1, 1))
-        im = self.roundtrip(hopper(), subsampling=2)  # 4:1:1
+        im = self.roundtrip(hopper(), subsampling=2)  # 4:2:0
         self.assertEqual(getsampling(im), (2, 2, 1, 1, 1, 1))
         im = self.roundtrip(hopper(), subsampling=3)  # default (undefined)
         self.assertEqual(getsampling(im), (2, 2, 1, 1, 1, 1))
@@ -295,11 +308,13 @@ class TestFileJpeg(PillowTestCase):
         self.assertEqual(getsampling(im), (1, 1, 1, 1, 1, 1))
         im = self.roundtrip(hopper(), subsampling="4:2:2")
         self.assertEqual(getsampling(im), (2, 1, 1, 1, 1, 1))
+        im = self.roundtrip(hopper(), subsampling="4:2:0")
+        self.assertEqual(getsampling(im), (2, 2, 1, 1, 1, 1))
         im = self.roundtrip(hopper(), subsampling="4:1:1")
         self.assertEqual(getsampling(im), (2, 2, 1, 1, 1, 1))
 
         self.assertRaises(
-            TypeError, lambda: self.roundtrip(hopper(), subsampling="1:1:1"))
+            TypeError, self.roundtrip, hopper(), subsampling="1:1:1")
 
     def test_exif(self):
         im = Image.open("Tests/images/pil_sample_rgb.jpg")
@@ -408,18 +423,18 @@ class TestFileJpeg(PillowTestCase):
         self._n_qtables_helper(4, "Tests/images/pil_sample_cmyk.jpg")
 
         # not a sequence
-        self.assertRaises(Exception, lambda: self.roundtrip(im, qtables='a'))
+        self.assertRaises(Exception, self.roundtrip, im, qtables='a')
         # sequence wrong length
-        self.assertRaises(Exception, lambda: self.roundtrip(im, qtables=[]))
+        self.assertRaises(Exception, self.roundtrip, im, qtables=[])
         # sequence wrong length
         self.assertRaises(Exception,
-                          lambda: self.roundtrip(im, qtables=[1, 2, 3, 4, 5]))
+                          self.roundtrip, im, qtables=[1, 2, 3, 4, 5])
 
         # qtable entry not a sequence
-        self.assertRaises(Exception, lambda: self.roundtrip(im, qtables=[1]))
+        self.assertRaises(Exception, self.roundtrip, im, qtables=[1])
         # qtable entry has wrong number of items
         self.assertRaises(Exception,
-                          lambda: self.roundtrip(im, qtables=[[1, 2, 3, 4]]))
+                          self.roundtrip, im, qtables=[[1, 2, 3, 4]])
 
     @unittest.skipUnless(djpeg_available(), "djpeg not available")
     def test_load_djpeg(self):
@@ -439,7 +454,7 @@ class TestFileJpeg(PillowTestCase):
     def test_no_duplicate_0x1001_tag(self):
         # Arrange
         from PIL import ExifTags
-        tag_ids = dict(zip(ExifTags.TAGS.values(), ExifTags.TAGS.keys()))
+        tag_ids = {v: k for k, v in ExifTags.TAGS.items()}
 
         # Assert
         self.assertEqual(tag_ids['RelatedImageWidth'], 0x1001)
@@ -464,7 +479,7 @@ class TestFileJpeg(PillowTestCase):
         # Act
         # Shouldn't raise error
         fn = "Tests/images/sugarshack_bad_mpo_header.jpg"
-        im = self.assert_warning(UserWarning, lambda: Image.open(fn))
+        im = self.assert_warning(UserWarning, Image.open, fn)
 
         # Assert
         self.assertEqual(im.format, "JPEG")
@@ -476,17 +491,11 @@ class TestFileJpeg(PillowTestCase):
             img.save(out, "JPEG")
 
     def test_save_wrong_modes(self):
-        out = BytesIO()
-        for mode in ['LA', 'La', 'RGBa', 'P']:
-            img = Image.new(mode, (20, 20))
-            self.assertRaises(IOError, img.save, out, "JPEG")
-
-    def test_save_modes_with_warnings(self):
         # ref https://github.com/python-pillow/Pillow/issues/2005
         out = BytesIO()
-        for mode in ['RGBA']:
+        for mode in ['LA', 'La', 'RGBA', 'RGBa', 'P']:
             img = Image.new(mode, (20, 20))
-            self.assert_warning(DeprecationWarning, img.save, out, "JPEG")
+            self.assertRaises(IOError, img.save, out, "JPEG")
 
     def test_save_tiff_with_dpi(self):
         # Arrange
@@ -528,6 +537,16 @@ class TestFileJpeg(PillowTestCase):
         # Act / Assert
         self.assertEqual(im.info.get("dpi"), (508, 508))
 
+    def test_dpi_exif_zero_division(self):
+        # Arrange
+        # This is photoshop-200dpi.jpg with EXIF resolution set to 0/0:
+        # exiftool -XResolution=0/0 -YResolution=0/0 photoshop-200dpi.jpg
+        im = Image.open("Tests/images/exif-dpi-zerodivision.jpg")
+
+        # Act / Assert
+        # This should return the default, and not raise a ZeroDivisionError
+        self.assertEqual(im.info.get("dpi"), (72, 72))
+
     def test_no_dpi_in_exif(self):
         # Arrange
         # This is photoshop-200dpi.jpg with resolution removed from EXIF:
@@ -537,6 +556,15 @@ class TestFileJpeg(PillowTestCase):
         # Act / Assert
         # "When the image resolution is unknown, 72 [dpi] is designated."
         # http://www.exiv2.org/tags.html
+        self.assertEqual(im.info.get("dpi"), (72, 72))
+
+    def test_invalid_exif(self):
+        # This is no-dpi-in-exif with the tiff header of the exif block
+        # hexedited from MM * to FF FF FF FF
+        im = Image.open("Tests/images/invalid-exif.jpg")
+
+        # This should return the default, and not a SyntaxError or
+        # OSError for unidentified image.
         self.assertEqual(im.info.get("dpi"), (72, 72))
 
 
@@ -556,7 +584,7 @@ class TestFileCloseW32(PillowTestCase):
         im = Image.open(tmpfile)
         fp = im.fp
         self.assertFalse(fp.closed)
-        self.assertRaises(Exception, lambda: os.remove(tmpfile))
+        self.assertRaises(Exception, os.remove, tmpfile)
         im.load()
         self.assertTrue(fp.closed)
         # this should not fail, as load should have closed the file.

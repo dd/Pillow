@@ -41,13 +41,11 @@
 #define CLIP(v) ((v) <= 0 ? 0 : (v) >= 255 ? 255 : (v))
 #define CLIP16(v) ((v) <= -32768 ? -32768 : (v) >= 32767 ? 32767 : (v))
 
-/* like (a * b + 127) / 255), but much faster on most platforms */
-#define MULDIV255(a, b, tmp)\
-        (tmp = (a) * (b) + 128, ((((tmp) >> 8) + (tmp)) >> 8))
-
 /* ITU-R Recommendation 601-2 (assuming nonlinear RGB) */
 #define L(rgb)\
     ((INT32) (rgb)[0]*299 + (INT32) (rgb)[1]*587 + (INT32) (rgb)[2]*114)
+#define L24(rgb)\
+    ((rgb)[0]*19595 + (rgb)[1]*38470 + (rgb)[2]*7471)
 
 #ifndef round
 double round(double x) {
@@ -214,7 +212,7 @@ rgb2l(UINT8* out, const UINT8* in, int xsize)
     int x;
     for (x = 0; x < xsize; x++, in += 4)
         /* ITU-R Recommendation 601-2 (assuming nonlinear RGB) */
-        *out++ = L(in) / 1000;
+        *out++ = L24(in) >> 16;
 }
 
 static void
@@ -223,7 +221,7 @@ rgb2la(UINT8* out, const UINT8* in, int xsize)
     int x;
     for (x = 0; x < xsize; x++, in += 4, out += 4) {
         /* ITU-R Recommendation 601-2 (assuming nonlinear RGB) */
-        out[0] = out[1] = out[2] = L(in) / 1000;
+        out[0] = out[1] = out[2] = L24(in) >> 16;
         out[3] = 255;
     }
 }
@@ -234,7 +232,7 @@ rgb2i(UINT8* out_, const UINT8* in, int xsize)
     int x;
     INT32* out = (INT32*) out_;
     for (x = 0; x < xsize; x++, in += 4)
-        *out++ = L(in) / 1000;
+        *out++ = L24(in) >> 16;
 }
 
 static void
@@ -423,7 +421,7 @@ rgba2la(UINT8* out, const UINT8* in, int xsize)
     int x;
     for (x = 0; x < xsize; x++, in += 4, out += 4) {
         /* ITU-R Recommendation 601-2 (assuming nonlinear RGB) */
-        out[0] = out[1] = out[2] = L(in) / 1000;
+        out[0] = out[1] = out[2] = L24(in) >> 16;
         out[3] = in[3];
     }
 }
@@ -536,12 +534,15 @@ rgb2cmyk(UINT8* out, const UINT8* in, int xsize)
 static void
 cmyk2rgb(UINT8* out, const UINT8* in, int xsize)
 {
-    int x;
-    for (x = 0; x < xsize; x++, in += 4) {
-        *out++ = CLIP(255 - (in[0] + in[3]));
-        *out++ = CLIP(255 - (in[1] + in[3]));
-        *out++ = CLIP(255 - (in[2] + in[3]));
-        *out++ = 255;
+    int x, nk, tmp;
+    for (x = 0; x < xsize; x++) {
+        nk = 255 - in[3];
+        out[0] = CLIP(nk - MULDIV255(in[0], nk, tmp));
+        out[1] = CLIP(nk - MULDIV255(in[1], nk, tmp));
+        out[2] = CLIP(nk - MULDIV255(in[2], nk, tmp));
+        out[3] = 255;
+        out += 4;
+        in += 4;
     }
 }
 
@@ -1035,7 +1036,7 @@ frompalette(Imaging imOut, Imaging imIn, const char *mode)
     else
         return (Imaging) ImagingError_ValueError("conversion not supported");
 
-    imOut = ImagingNew2(mode, imOut, imIn);
+    imOut = ImagingNew2Dirty(mode, imOut, imIn);
     if (!imOut)
         return NULL;
 
@@ -1073,7 +1074,7 @@ topalette(Imaging imOut, Imaging imIn, ImagingPalette inpalette, int dither)
     if (!palette)
         return (Imaging) ImagingError_ValueError("no palette");
 
-    imOut = ImagingNew2("P", imOut, imIn);
+    imOut = ImagingNew2Dirty("P", imOut, imIn);
     if (!imOut) {
       if (palette != inpalette)
         ImagingPaletteDelete(palette);
@@ -1211,7 +1212,7 @@ tobilevel(Imaging imOut, Imaging imIn, int dither)
     if (strcmp(imIn->mode, "L") != 0 && strcmp(imIn->mode, "RGB") != 0)
         return (Imaging) ImagingError_ValueError("conversion not supported");
 
-    imOut = ImagingNew2("1", imOut, imIn);
+    imOut = ImagingNew2Dirty("1", imOut, imIn);
     if (!imOut)
         return NULL;
 
@@ -1344,7 +1345,7 @@ convert(Imaging imOut, Imaging imIn, const char *mode,
     }
 #endif
 
-    imOut = ImagingNew2(mode, imOut, imIn);
+    imOut = ImagingNew2Dirty(mode, imOut, imIn);
     if (!imOut)
         return NULL;
 
@@ -1407,7 +1408,7 @@ ImagingConvertTransparent(Imaging imIn, const char *mode,
         g = b = r;
     }
 
-    imOut = ImagingNew2(mode, imOut, imIn);
+    imOut = ImagingNew2Dirty(mode, imOut, imIn);
     if (!imOut){
         return NULL;
     }

@@ -87,6 +87,9 @@ class TestImageConvert(PillowTestCase):
 
         # Assert
         self.assertNotIn('transparency', rgba.info)
+        # https://github.com/python-pillow/Pillow/issues/2702
+        self.assertEqual(rgba.palette, None)
+        
 
     def test_trns_l(self):
         im = hopper('L')
@@ -104,7 +107,7 @@ class TestImageConvert(PillowTestCase):
 
         p = self.assert_warning(
             UserWarning,
-            lambda: im.convert('P', palette=Image.ADAPTIVE))
+            im.convert, 'P', palette=Image.ADAPTIVE)
         self.assertNotIn('transparency', p.info)
         p.save(f)
 
@@ -122,9 +125,13 @@ class TestImageConvert(PillowTestCase):
         self.assertIn('transparency', p.info)
         p.save(f)
 
+        p = im.convert('RGBA')
+        self.assertNotIn('transparency', p.info)
+        p.save(f)
+
         p = self.assert_warning(
             UserWarning,
-            lambda: im.convert('P', palette=Image.ADAPTIVE))
+            im.convert, 'P', palette=Image.ADAPTIVE)
         self.assertNotIn('transparency', p.info)
         p.save(f)
 
@@ -133,7 +140,7 @@ class TestImageConvert(PillowTestCase):
         alpha = hopper('L')
         im.putalpha(alpha)
 
-        comparable = im.convert('P').convert('LA').split()[1]
+        comparable = im.convert('P').convert('LA').getchannel('A')
 
         self.assert_image_similar(alpha, comparable, 5)
 
@@ -148,7 +155,7 @@ class TestImageConvert(PillowTestCase):
 
         # Act / Assert
         self.assertRaises(ValueError,
-                          lambda: im.convert(mode='CMYK', matrix=matrix))
+                          im.convert, mode='CMYK', matrix=matrix)
 
     def test_matrix_wrong_mode(self):
         # Arrange
@@ -161,7 +168,7 @@ class TestImageConvert(PillowTestCase):
 
         # Act / Assert
         self.assertRaises(ValueError,
-                          lambda: im.convert(mode='L', matrix=matrix))
+                          im.convert, mode='L', matrix=matrix)
 
     def test_matrix_xyz(self):
 
@@ -185,7 +192,7 @@ class TestImageConvert(PillowTestCase):
             if converted_im.mode == 'RGB':
                 self.assert_image_similar(converted_im, target, 3)
             else:
-                self.assert_image_similar(converted_im, target.split()[0], 1)
+                self.assert_image_similar(converted_im, target.getchannel(0), 1)
 
         matrix_convert('RGB')
         matrix_convert('L')

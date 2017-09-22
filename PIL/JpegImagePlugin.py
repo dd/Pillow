@@ -119,19 +119,22 @@ def APP(self, marker):
 
     # If DPI isn't in JPEG header, fetch from EXIF
     if "dpi" not in self.info and "exif" in self.info:
-        exif = self._getexif()
         try:
+            exif = self._getexif()
             resolution_unit = exif[0x0128]
             x_resolution = exif[0x011A]
             try:
                 dpi = x_resolution[0] / x_resolution[1]
             except TypeError:
                 dpi = x_resolution
-            if resolution_unit == 3: # cm
+            if resolution_unit == 3:  # cm
                 # 1 dpcm = 2.54 dpi
                 dpi *= 2.54
             self.info["dpi"] = dpi, dpi
-        except KeyError:
+        except (KeyError, SyntaxError, ZeroDivisionError):
+            # SyntaxError for invalid/unreadable exif
+            # KeyError for dpi not included
+            # ZeroDivisionError for invalid dpi rational value
             self.info["dpi"] = 72, 72
 
 
@@ -423,7 +426,8 @@ def _fixup_dict(src_dict):
         try:
             if len(value) == 1 and not isinstance(value, dict):
                 return value[0]
-        except: pass
+        except:
+            pass
         return value
 
     return {k: _fixup(v) for k, v in src_dict.items()}
@@ -554,7 +558,6 @@ RAWMODE = {
     "1": "L",
     "L": "L",
     "RGB": "RGB",
-    "RGBA": "RGB",
     "RGBX": "RGB",
     "CMYK": "CMYK;I",  # assume adobe conventions
     "YCbCr": "YCbCr",
@@ -603,14 +606,6 @@ def _save(im, fp, filename):
     except KeyError:
         raise IOError("cannot write mode %s as JPEG" % im.mode)
 
-    if im.mode == 'RGBA':
-        warnings.warn(
-            'You are saving RGBA image as JPEG. The alpha channel will be '
-            'discarded. This conversion is deprecated and will be disabled '
-            'in Pillow 3.7. Please, convert the image to RGB explicitly.',
-            DeprecationWarning
-        )
-
     info = im.encoderinfo
 
     dpi = [int(round(x)) for x in info.get("dpi", (0, 0))]
@@ -640,7 +635,11 @@ def _save(im, fp, filename):
         subsampling = 0
     elif subsampling == "4:2:2":
         subsampling = 1
+    elif subsampling == "4:2:0":
+        subsampling = 2
     elif subsampling == "4:1:1":
+        # For compatibility. Before Pillow 4.3, 4:1:1 actually meant 4:2:0.
+        # Set 4:2:0 if someone is still using that value.
         subsampling = 2
     elif subsampling == "keep":
         if im.format != "JPEG":
@@ -705,8 +704,8 @@ def _save(im, fp, filename):
     # "progressive" is the official name, but older documentation
     # says "progression"
     # FIXME: issue a warning if the wrong form is used (post-1.1.7)
-    progressive = info.get("progressive", False) or\
-                  info.get("progression", False)
+    progressive = (info.get("progressive", False) or
+                   info.get("progression", False))
 
     optimize = info.get("optimize", False)
 
@@ -740,8 +739,9 @@ def _save(im, fp, filename):
             bufsize = im.size[0] * im.size[1]
 
     # The exif info needs to be written as one block, + APP1, + one spare byte.
-    # Ensure that our buffer is big enough
-    bufsize = max(ImageFile.MAXBLOCK, bufsize, len(info.get("exif", b"")) + 5)
+    # Ensure that our buffer is big enough. Same with the icc_profile block.
+    bufsize = max(ImageFile.MAXBLOCK, bufsize, len(info.get("exif", b"")) + 5,
+                  len(extra) + 1)
 
     ImageFile._save(im, fp, [("jpeg", (0, 0)+im.size, 0, rawmode)], bufsize)
 

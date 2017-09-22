@@ -104,6 +104,8 @@ An instance of the :py:class:`~PIL.Image.Image` class has the following
 methods. Unless otherwise stated, all methods return a new instance of the
 :py:class:`~PIL.Image.Image` class, holding the resulting image.
 
+
+.. automethod:: PIL.Image.Image.alpha_composite
 .. automethod:: PIL.Image.Image.convert
 
 The following example converts an RGB image (linearly calibrated according to
@@ -144,6 +146,7 @@ ITU-R 709, using the D65 luminant) to the CIE XYZ color space:
 .. automethod:: PIL.Image.Image.seek
 .. automethod:: PIL.Image.Image.show
 .. automethod:: PIL.Image.Image.split
+.. automethod:: PIL.Image.Image.getchannel
 .. automethod:: PIL.Image.Image.tell
 .. automethod:: PIL.Image.Image.thumbnail
 .. automethod:: PIL.Image.Image.tobitmap
@@ -162,6 +165,14 @@ Attributes
 ----------
 
 Instances of the :py:class:`Image` class have the following attributes:
+
+.. py:attribute:: filename
+
+    The filename or path of the source file. Only images created with the 
+    factory function `open` have a filename attribute. If the input is a 
+    file like object, the filename attribute is set to an empty string.
+    
+    :type: :py:class: `string`
 
 .. py:attribute:: format
 

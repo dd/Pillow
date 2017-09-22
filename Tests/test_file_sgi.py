@@ -42,8 +42,7 @@ class TestFileSgi(PillowTestCase):
         invalid_file = "Tests/images/flower.jpg"
 
         self.assertRaises(ValueError,
-                          lambda:
-                          SgiImagePlugin.SgiImageFile(invalid_file))
+                          SgiImagePlugin.SgiImageFile, invalid_file)
 
     def test_write(self):
         def roundtrip(img):
@@ -54,6 +53,22 @@ class TestFileSgi(PillowTestCase):
 
         for mode in ('L', 'RGB', 'RGBA'):
             roundtrip(hopper(mode))
+
+        # Test 1 dimension for an L mode image
+        roundtrip(Image.new('L', (10, 1)))
+
+    def test_unsupported_mode(self):
+        im = hopper('LA')
+        out = self.tempfile('temp.sgi')
+
+        self.assertRaises(ValueError, im.save, out, format='sgi')
+
+    def test_incorrect_number_of_bands(self):
+        im = hopper('YCbCr')
+        im.mode = 'RGB'
+        out = self.tempfile('temp.sgi')
+
+        self.assertRaises(ValueError, im.save, out, format='sgi')
 
 
 if __name__ == '__main__':

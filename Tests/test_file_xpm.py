@@ -2,7 +2,6 @@ from helper import unittest, PillowTestCase, hopper
 
 from PIL import Image, XpmImagePlugin
 
-# sample ppm stream
 TEST_FILE = "Tests/images/hopper.xpm"
 
 
@@ -22,7 +21,7 @@ class TestFileXpm(PillowTestCase):
         invalid_file = "Tests/images/flower.jpg"
 
         self.assertRaises(SyntaxError,
-                          lambda: XpmImagePlugin.XpmImageFile(invalid_file))
+                          XpmImagePlugin.XpmImageFile, invalid_file)
 
     def test_load_read(self):
         # Arrange

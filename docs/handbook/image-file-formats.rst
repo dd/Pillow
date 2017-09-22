@@ -110,6 +110,7 @@ are available::
 **append_images**
     A list of images to append as additional frames. Each of the
     images in the list can be single or multiframe images.
+    This is currently only supported for GIF, PDF and TIFF.
 
 **duration**
     The display duration of each frame of the multiframe gif, in
@@ -124,7 +125,7 @@ are available::
     eliminating unused colors. This is only useful if the palette can
     be compressed to the next smaller power of 2 elements.
 
-**palette** 
+**palette**
     Use the specified palette for the saved image. The palette should
     be a bytes or bytearray object containing the palette entries in
     RGBRGB... form. It should be no more than 768 bytes. Alternately,
@@ -177,8 +178,8 @@ The :py:meth:`~PIL.Image.Image.save` method supports the following options:
 **sizes**
     A list of sizes including in this ico file; these are a 2-tuple,
     ``(width, height)``; Default to ``[(16, 16), (24, 24), (32, 32), (48, 48),
-    (64, 64), (128, 128), (255, 255)]``. Any sizes bigger than the original
-    size or 255 will be ignored.
+    (64, 64), (128, 128), (256, 256)]``. Any sizes bigger than the original
+    size or 256 will be ignored.
 
 IM
 ^^
@@ -274,11 +275,11 @@ The :py:meth:`~PIL.Image.Image.save` method supports the following options:
     If present, sets the subsampling for the encoder.
 
     * ``keep``: Only valid for JPEG files, will retain the original image setting.
-    * ``4:4:4``, ``4:2:2``, ``4:1:1``: Specific sampling values
+    * ``4:4:4``, ``4:2:2``, ``4:2:0``: Specific sampling values
     * ``-1``: equivalent to ``keep``
     * ``0``: equivalent to ``4:4:4``
     * ``1``: equivalent to ``4:2:2``
-    * ``2``: equivalent to ``4:1:1``
+    * ``2``: equivalent to ``4:2:0``
 
 **qtables**
     If present, sets the qtables for the encoder. This is listed as an
@@ -788,6 +789,8 @@ MIC
 PIL identifies and reads Microsoft Image Composer (MIC) files. When opened, the
 first sprite in the file is loaded. You can use :py:meth:`~file.seek` and
 :py:meth:`~file.tell` to read other sprites from the file.
+
+Note that there may be an embedded gamma of 2.2 in MIC files.
 
 MPO
 ^^^
